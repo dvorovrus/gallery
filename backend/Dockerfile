@@ -9,9 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Копирование requirements и установка зависимостей
+# Копирование requirements и установка зависимостей глобально
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.12-slim
@@ -24,10 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование установленных пакетов из builder
-COPY --from=builder /root/.local /root/.local
-
-# Обновление PATH для использования локальных pip пакетов
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Копирование кода приложения
 COPY . .
@@ -37,8 +35,7 @@ RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 
 # Создание non-root пользователя и установка прав
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app && \
-    chown -R appuser:appuser /root/.local
+    chown -R appuser:appuser /app
 
 USER appuser
 
