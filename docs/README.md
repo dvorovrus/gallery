@@ -18,23 +18,22 @@
    - Коды ошибок
    - Аутентификация
 
-3. **[Настройка Google Drive](./03-google-drive-setup.md)**
-   - Создание Service Account
-   - Настройка Google Drive API
-   - Безопасность
-   - Troubleshooting
-
-4. **[База данных](./04-database.md)**
+3. **[База данных](./04-database.md)**
    - Схема базы данных
    - Миграции с Alembic
    - SQL запросы для администрирования
    - Backup и восстановление
 
+4. **[Настройка Google Drive OAuth](./04-google-drive-oauth-setup.md)**
+   - Создание OAuth credentials
+   - Настройка Google Drive API
+   - Безопасность
+   - Troubleshooting
+
 5. **[Развертывание](./05-deployment.md)**
    - Локальное развертывание
    - Docker Compose
-   - Kubernetes
-   - CI/CD
+   - Production рекомендации
 
 6. **[Примеры использования](./06-examples.md)**
    - JavaScript/TypeScript примеры
@@ -61,22 +60,29 @@ pip install -r requirements.txt
 
 ### 2. Настройка
 
-Создайте `backend/.env`:
+Создайте `backend/.env` на основе `.env.example`:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/gallery
-SECRET_KEY=your-secret-key
-GOOGLE_CREDENTIALS_PATH=./service-account.json
-GOOGLE_DRIVE_FOLDER_ID=your-folder-id
+# База данных (SQLite)
+DATABASE_URL=sqlite:///./gallery.db
+
+# JWT секретный ключ
+SECRET_KEY=your-secret-key-here
+
+# Тип хранилища
+STORAGE_TYPE=local  # или google_drive_oauth
+
+# CORS
 CORS_ORIGINS=http://localhost:5173
 ```
 
 ### 3. База данных
 
 ```bash
-createdb gallery
 cd backend
 alembic upgrade head
+# или
+python init_db.py
 ```
 
 ### 4. Запуск
@@ -125,16 +131,14 @@ npm run dev
 
 ### Backend
 - FastAPI 0.136.3
-- Python 3.11+
-- PostgreSQL 15+
+- Python 3.12+
+- SQLite (или PostgreSQL для production)
 - SQLAlchemy 2.0
-- Google Drive API
+- Google Drive API (опционально)
 
-### Infrastructure
-- Docker & Docker Compose
-- Kubernetes
-- Nginx
-- PostgreSQL
+### Storage Options
+- Local File Storage (по умолчанию)
+- Google Drive OAuth 2.0 (опционально)
 
 ## 📝 Структура проекта
 
@@ -144,6 +148,7 @@ gallery/
 │   ├── src/
 │   │   ├── components/
 │   │   ├── api/
+│   │   ├── services/
 │   │   ├── types/
 │   │   └── App.tsx
 │   └── package.json
@@ -157,17 +162,17 @@ gallery/
 │   │   └── core/
 │   ├── alembic/
 │   ├── requirements.txt
+│   ├── .env.example
 │   └── main.py
 │
 ├── docs/               # Документация
 │   ├── 01-architecture.md
 │   ├── 02-api-reference.md
-│   ├── 03-google-drive-setup.md
 │   ├── 04-database.md
+│   ├── 04-google-drive-oauth-setup.md
 │   ├── 05-deployment.md
 │   └── 06-examples.md
 │
-├── plan.md             # Исходный план архитектуры
 └── README.md           # Обзор проекта
 ```
 
@@ -187,15 +192,16 @@ gallery/
 
 ### При возникновении проблем:
 
-1. Проверьте логи: `docker-compose logs -f`
-2. Проверьте переменные окружения
-3. Убедитесь, что БД запущена
-4. Проверьте Google Drive credentials
+1. Проверьте логи в консоли backend/frontend
+2. Проверьте переменные окружения в `.env`
+3. Убедитесь, что venv активирован для backend
+4. Проверьте Google Drive credentials (если используется)
 
 ### Для production:
 
 - Используйте HTTPS
 - Настройте CORS правильно
+- Смените SQLite на PostgreSQL
 - Регулярные backups БД
 - Мониторинг и логирование
 

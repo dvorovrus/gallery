@@ -4,7 +4,8 @@
 
 ### 1. Клонирование проекта
 ```bash
-cd D:\project\gallery
+git clone https://github.com/dvorovrus/gallery.git
+cd gallery
 ```
 
 ### 2. Backend Setup
@@ -34,22 +35,24 @@ pip install -r requirements.txt
 #### Настроить окружение
 ```bash
 # Скопировать пример
-copy .env.example .env
+copy .env.example .env  # Windows
+# cp .env.example .env  # Linux/macOS
 
 # Отредактировать .env:
-# - DATABASE_URL (PostgreSQL)
-# - SECRET_KEY (генерировать: openssl rand -hex 32)
-# - GOOGLE_DRIVE_FOLDER_ID
-# - Поместить service-account.json в backend/
+# - DATABASE_URL=sqlite:///./gallery.db
+# - SECRET_KEY (генерировать: python -c "import secrets; print(secrets.token_hex(32))")
+# - STORAGE_TYPE=local (или google_drive_oauth для Google Drive)
+# - Опционально: настроить Google Drive OAuth
 ```
 
 #### Создать базу данных
 ```bash
-# Создать PostgreSQL БД
-createdb gallery
-
+# SQLite БД создается автоматически
 # Применить миграции (venv должен быть активирован!)
 alembic upgrade head
+
+# Или использовать init_db.py
+python init_db.py
 ```
 
 ### 3. Frontend Setup
@@ -167,19 +170,20 @@ pip install -r requirements.txt
 
 ## Полезные ссылки
 
-- [README.md](../README.md) - Обзор проекта
-- [docs/](../docs/) - Полная документация
-- [docs/03-google-drive-setup.md](../docs/03-google-drive-setup.md) - Настройка Google Drive
+- [README.md](./README.md) - Обзор проекта
+- [docs/](./docs/) - Полная документация
+- [docs/04-google-drive-oauth-setup.md](./docs/04-google-drive-oauth-setup.md) - Настройка Google Drive OAuth
 
 ## Ежедневная работа
 
 ```bash
 # 1. Открыть проект
-cd D:\project\gallery
+cd gallery
 
 # 2. Terminal 1: Backend
 cd backend
-venv\Scripts\activate
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/macOS
 uvicorn main:app --reload
 
 # 3. Terminal 2: Frontend

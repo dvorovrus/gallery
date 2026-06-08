@@ -1,6 +1,6 @@
 # Gallery - Photo Album Application
 
-Полноценное веб-приложение для управления фотоальбомами с возможностью хранения в Google Drive, аутентификацией и публичным шарингом.
+Полноценное веб-приложение для управления фотоальбомами с возможностью хранения в Google Drive или локально, аутентификацией и публичным шарингом.
 
 ## 🏗️ Архитектура
 
@@ -13,17 +13,19 @@
            ▼
 ┌─────────────────────┐
 │   FastAPI Backend   │
-│   (Python 3.11+)    │
+│   (Python 3.12+)    │
 └──────┬───────┬──────┘
        │       │
        │       ▼
-       │  PostgreSQL
+       │   SQLite DB
        │
        ▼
+ Local Storage or
  Google Drive API
        │
        ▼
- Google Drive Storage
+ Local Files or
+ Google Drive
 ```
 
 ## 📦 Технологический стек
@@ -38,18 +40,18 @@
 
 ### Backend
 - **FastAPI 0.136.3** - веб-фреймворк
-- **PostgreSQL** - реляционная база данных
+- **SQLite** - встроенная база данных
 - **SQLAlchemy 2.0** - ORM
 - **JWT** - аутентификация
-- **Google Drive API** - хранилище файлов
+- **Google Drive API (опционально)** - облачное хранилище
+- **Local Storage** - локальное хранилище файлов
 
 ## 🚀 Быстрый старт
 
 ### Требования
 - Node.js 20+
-- Python 3.11+
-- PostgreSQL 15+
-- Google Cloud Service Account
+- Python 3.12+
+- Google Cloud OAuth credentials (опционально, для Google Drive интеграции)
 
 ### 1. Установка зависимостей
 
@@ -78,19 +80,36 @@ pip install -r requirements.txt
 
 ### 2. Настройка окружения
 
-Создайте файл `backend/.env`:
+Создайте файл `backend/.env` на основе `backend/.env.example`:
+
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/gallery
-SECRET_KEY=your-secret-key-here
-GOOGLE_CREDENTIALS_PATH=./service-account.json
+# База данных (SQLite)
+DATABASE_URL=sqlite:///./gallery.db
+
+# JWT секретный ключ (сгенерируйте свой)
+SECRET_KEY=your-secret-key-here-change-this
+
+# Тип хранилища: "local" или "google_drive_oauth"
+STORAGE_TYPE=local
+
+# Google Drive (опционально, если STORAGE_TYPE=google_drive_oauth)
+GOOGLE_CREDENTIALS_PATH=./oauth_credentials.json
 GOOGLE_DRIVE_FOLDER_ID=your-drive-folder-id
+
+# CORS
+CORS_ORIGINS=http://localhost:5173
 ```
 
 ### 3. Инициализация базы данных
 
 ```bash
 cd backend
+
+# Применить миграции
 alembic upgrade head
+
+# Или создать БД через init_db.py
+python init_db.py
 ```
 
 ### 4. Запуск приложения
@@ -148,6 +167,8 @@ gallery/
 │   ├── src/
 │   │   ├── components/ # React компоненты
 │   │   ├── api/        # API клиент
+│   │   ├── services/   # Сервисы
+│   │   ├── types/      # TypeScript типы
 │   │   └── App.tsx     # Главный компонент
 │   ├── package.json
 │   └── vite.config.ts
@@ -159,21 +180,24 @@ gallery/
 │   │   ├── schemas/    # Pydantic схемы
 │   │   ├── services/   # Бизнес-логика
 │   │   └── core/       # Конфигурация
+│   ├── alembic/        # Миграции БД
 │   ├── requirements.txt
-│   └── main.py
+│   ├── main.py
+│   ├── .env.example    # Пример конфигурации
+│   └── init_db.py      # Инициализация БД
 │
 ├── docs/               # Документация
-├── plan.md             # Изначальный план архитектуры
 └── README.md           # Этот файл
 ```
 
 ## 🔐 Безопасность
 
 - JWT токены для аутентификации
-- Bcrypt для хеширования паролей
-- Service Account для Google Drive (без OAuth flow)
+- Argon2 для хеширования паролей
+- OAuth 2.0 для Google Drive (с пользовательским согласием)
 - CORS настройки
 - Валидация всех входных данных
+- Защита паролем для публичных ссылок
 
 ## 📄 Лицензия
 
@@ -181,6 +205,6 @@ MIT License
 
 ## 👨‍💻 Разработка
 
-Проект создан на основе архитектуры из `plan.md` с использованием актуальных версий библиотек (по состоянию на июнь 2026).
+Проект создан с использованием современного стека технологий (по состоянию на июнь 2026).
 
-Для вопросов и предложений создавайте Issues.
+Для вопросов и предложений создавайте Issues в GitHub репозитории.
