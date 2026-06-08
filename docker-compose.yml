@@ -22,7 +22,7 @@ services:
       - "traefik.docker.network=public-traefik"
 
       # API HTTPS Router
-      - 'traefik.http.routers.gallery-backend.rule=Host(`${DOMAIN:-gallery.example.com}`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`) || PathPrefix(`/healthz`))'
+      - 'traefik.http.routers.gallery-backend.rule=Host(`${DOMAIN:-gallery.example.com}`) && (PathPrefix(`/auth`) || PathPrefix(`/albums`) || PathPrefix(`/photos`) || PathPrefix(`/share`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`) || PathPrefix(`/healthz`) || PathPrefix(`/health`))'
       - "traefik.http.routers.gallery-backend.entrypoints=websecure"
       - "traefik.http.routers.gallery-backend.tls=true"
       - "traefik.http.routers.gallery-backend.tls.certresolver=le"
