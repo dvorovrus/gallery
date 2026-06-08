@@ -97,11 +97,11 @@ export const getAlbums = async () => {
   });
 };
 
-export const createAlbum = async (title: string) => {
+export const createAlbum = async (title: string, expirationType: string = 'unlimited') => {
   return requestJson<Album>('/albums', {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, expiration_type: expirationType }),
   });
 };
 

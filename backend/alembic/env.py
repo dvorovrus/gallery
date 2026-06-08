@@ -8,9 +8,14 @@ from alembic import context
 # Import your models here
 from app.core.database import Base
 from app.models.models import User, Album, Photo, Share
+from app.core.config import get_settings
 
 # this is the Alembic Config object
 config = context.config
+
+# Override sqlalchemy.url with the one from settings
+settings = get_settings()
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:

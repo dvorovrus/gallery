@@ -4,6 +4,9 @@ export interface Album {
   user_id: number;
   created_at: string;
   is_public: boolean;
+  expiration_type: 'unlimited' | '7_days' | '14_days' | '30_days';
+  expires_at: string | null;
+  auto_delete_scheduled: boolean;
 }
 
 export interface Photo {

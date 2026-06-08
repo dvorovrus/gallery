@@ -7,6 +7,12 @@ sqlalchemy==2.0.36
 psycopg[binary]==3.3.4
 alembic==1.14.0
 
+# Task Scheduler
+apscheduler==3.10.4
+
+# Image Processing
+Pillow==12.2.0
+
 # Authentication and Security
 pyjwt==2.10.1
 passlib[argon2]==1.7.4

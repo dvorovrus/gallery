@@ -21,13 +21,16 @@ class AlbumBase(BaseModel):
     title: str
 
 class AlbumCreate(AlbumBase):
-    pass
+    expiration_type: str = "unlimited"  # unlimited, 7_days, 14_days, 30_days
 
 class AlbumResponse(AlbumBase):
     id: int
     user_id: int
     created_at: datetime
     is_public: bool
+    expiration_type: str
+    expires_at: Optional[datetime] = None
+    auto_delete_scheduled: bool
 
     class Config:
         from_attributes = True
@@ -57,7 +60,7 @@ class ShareCreate(BaseModel):
 
 class ShareResponse(BaseModel):
     id: int
-    album_id: int
+    album_id: Optional[int] = None
     token: str
     password_required: bool
     expires_at: Optional[datetime] = None

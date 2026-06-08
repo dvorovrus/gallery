@@ -12,7 +12,7 @@ const api = axios.create({
 
 // Interceptor для добавления токена
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = localStorage.getItem('auth_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -69,6 +69,9 @@ export const photosAPI = {
 export const shareAPI = {
   createAlbumShare: (albumId: string, password?: string) =>
     api.post<ShareLink>(`/albums/${albumId}/share`, { password }),
+
+  createPhotoShare: (photoId: string, password?: string) =>
+    api.post<ShareLink>(`/photos/${photoId}/share`, { password }),
 
   getSharedAlbum: (token: string, password?: string) =>
     api.get<{ album: Album; photos: Photo[] }>(`/share/${token}`, {

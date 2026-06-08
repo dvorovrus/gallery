@@ -22,6 +22,9 @@ class Album(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     is_public = Column(Boolean, default=False)
     password_hash = Column(String, nullable=True)
+    expiration_type = Column(String, default="unlimited", nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    auto_delete_scheduled = Column(Boolean, default=False, nullable=False)
 
     user = relationship("User", back_populates="albums")
     photos = relationship("Photo", back_populates="album", cascade="all, delete-orphan")
@@ -39,15 +42,18 @@ class Photo(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     album = relationship("Album", back_populates="photos")
+    shares = relationship("Share", back_populates="photo", cascade="all, delete-orphan")
 
 class Share(Base):
     __tablename__ = "shares"
 
     id = Column(Integer, primary_key=True, index=True)
-    album_id = Column(Integer, ForeignKey("albums.id"), nullable=False)
+    album_id = Column(Integer, ForeignKey("albums.id"), nullable=True)
+    photo_id = Column(Integer, ForeignKey("photos.id"), nullable=True)
     token = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     album = relationship("Album", back_populates="shares")
+    photo = relationship("Photo", back_populates="shares")

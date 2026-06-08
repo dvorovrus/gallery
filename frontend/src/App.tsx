@@ -3,11 +3,13 @@ import type { ChangeEvent, ReactNode } from 'react';
 import {
   Plus, Trash2, X,
   ChevronLeft, ChevronRight, Share2, Lock, Copy, CheckCircle,
-  Sun, Moon, Image as ImageIcon, Camera, LayoutGrid, CheckSquare, Square, LogOut, Download
+  Sun, Moon, Image as ImageIcon, Camera, LayoutGrid, CheckSquare, Square, LogOut, Download, Clock
 } from 'lucide-react';
 import Login from './components/Login';
 import * as api from './services/api';
+import { shareAPI } from './api/client';
 import type { Album, Photo } from './types';
+import { calculateTimeRemaining, formatTimeRemaining, formatExpirationDate, getExpirationColor, getExpirationBgColor } from './utils/time';
 
 const THEME_STORAGE_KEY = 'gallery_theme';
 const INITIAL_VISIBLE_PHOTOS = 18;
@@ -20,52 +22,49 @@ const getPhotoThumbnailUrl = (photoId: number) => `http://localhost:8000/photos/
 const sortPhotosByDateDesc = <T extends { created_at: string }>(items: T[]) =>
   [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 const formatRuDate = (value: string) => ruDateFormatter.format(new Date(value));
-const serializeAlbum = (album: Album): SerializedAlbum => ({ id: album.id, title: album.title, created_at: album.created_at });
-const serializePhoto = (photo: DownloadablePhoto): SerializedPhoto => ({
-  id: photo.id,
-  caption: photo.caption,
-  created_at: photo.created_at,
-  fullUrl: photo.fullUrl || getPhotoFullUrl(photo.id),
-  thumbnailUrl: photo.thumbnailUrl || getPhotoThumbnailUrl(photo.id),
-});
 
-const toBase64Url = (value: string): string => {
-  if (typeof window === 'undefined') return '';
-  return window.btoa(unescape(encodeURIComponent(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-};
-
-const fromBase64Url = (value: string): string => {
-  if (typeof window === 'undefined') return '';
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
-  return decodeURIComponent(escape(window.atob(`${normalized}${padding}`)));
-};
-
-const encodeSharePayload = (payload: ShareData): string => toBase64Url(JSON.stringify(payload));
-
-const decodeSharePayload = (encodedPayload: string | null): ShareData | null => {
-  if (!encodedPayload) return null;
+const downloadSharedPhoto = async (token: string, photoId: number, filename: string, password?: string) => {
   try {
-    return JSON.parse(fromBase64Url(encodedPayload));
+    const url = new URL(`http://localhost:8000/share/${token}/download/photo/${photoId}`);
+    if (password) {
+      url.searchParams.set('password', password);
+    }
+    const response = await fetch(url.toString());
+    if (!response.ok) throw new Error('Download failed');
+    const blob = await response.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
   } catch (error) {
-    return null;
+    console.error('Failed to download photo:', error);
   }
 };
 
-const bytesToHex = (bytes: Uint8Array): string => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-
-const hashPasswordValue = async (value: string): Promise<string> => {
-  if (typeof window !== 'undefined' && window.crypto?.subtle) {
-    const buffer = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-    return bytesToHex(new Uint8Array(buffer));
+const downloadSharedAlbum = async (token: string, albumName: string, password?: string) => {
+  try {
+    const url = new URL(`http://localhost:8000/share/${token}/download/album`);
+    if (password) {
+      url.searchParams.set('password', password);
+    }
+    const response = await fetch(url.toString());
+    if (!response.ok) throw new Error('Download failed');
+    const blob = await response.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${albumName}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  } catch (error) {
+    console.error('Failed to download album:', error);
   }
-
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash) + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return `fallback-${Math.abs(hash)}`;
 };
 
 const getAppBasePath = (pathname: string): string => pathname.startsWith('/share/') ? '/' : pathname;
@@ -73,51 +72,21 @@ const getAppBasePath = (pathname: string): string => pathname.startsWith('/share
 type ShareMode = 'public' | 'password';
 type ShareEntityType = 'album' | 'photo';
 
-interface SerializedAlbum {
-  id: number;
-  title: string;
-  created_at: string;
-}
-
-interface SerializedPhoto {
+type DownloadablePhoto = Photo | {
   id: number;
   caption: string | null;
   created_at: string;
   fullUrl: string;
   thumbnailUrl: string;
-}
-
-type DownloadablePhoto = Photo | SerializedPhoto;
+};
 
 interface ShareTarget {
   album: Album | null;
   photo: DownloadablePhoto | null;
-  photos: SerializedPhoto[];
+  photos: any[];
 }
 
-interface SharePayloadBase {
-  version: number;
-  token: string;
-  title: string;
-  accessType: ShareMode;
-  passwordHash: string | null;
-}
-
-interface SharedAlbumPayload extends SharePayloadBase {
-  type: 'album';
-  album: SerializedAlbum | null;
-  photo: null;
-  photos: SerializedPhoto[];
-}
-
-interface SharedPhotoPayload extends SharePayloadBase {
-  type: 'photo';
-  album: SerializedAlbum | null;
-  photo: SerializedPhoto | null;
-  photos: SerializedPhoto[];
-}
-
-type ShareData = SharedAlbumPayload | SharedPhotoPayload;
+type ShareData = any;
 
 interface SelectedFile {
   file: File;
@@ -178,7 +147,7 @@ interface SharedContentViewProps {
 interface CreateAlbumModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, expirationType: string) => void;
 }
 
 interface UploadPhotoModalProps {
@@ -207,26 +176,6 @@ interface LightboxProps {
   showActions?: boolean;
 }
 
-const parseShareFromLocation = (locationLike: Pick<Location, 'hash' | 'pathname' | 'search'>): ShareData | null => {
-  const shareRoute = locationLike.hash.startsWith('#/share/')
-    ? locationLike.hash.slice(1)
-    : locationLike.pathname.startsWith('/share/')
-      ? `${locationLike.pathname}${locationLike.search}`
-      : null;
-
-  if (!shareRoute) return null;
-
-  const [pathPart, queryString = ''] = shareRoute.split('?');
-  const segments = pathPart.split('/').filter(Boolean);
-  if (segments.length < 3 || segments[0] !== 'share') return null;
-
-  const [, type, token] = segments;
-  const payload = decodeSharePayload(new URLSearchParams(queryString).get('data')) as ShareData | null;
-  if (!payload || payload.type !== type || payload.token !== token) return null;
-
-  return payload;
-};
-
 // --- Скелетон для загрузки фото ---
 const PhotoSkeleton = () => (
   <div className="break-inside-avoid relative rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-200 dark:bg-neutral-800 animate-pulse">
@@ -235,6 +184,58 @@ const PhotoSkeleton = () => (
     </div>
   </div>
 );
+
+// --- Компонент отображения срока действия альбома ---
+interface AlbumExpirationBadgeProps {
+  album: Album;
+  compact?: boolean;
+}
+
+const AlbumExpirationBadge = memo(function AlbumExpirationBadge({ album, compact = false }: AlbumExpirationBadgeProps) {
+  const [timeRemaining, setTimeRemaining] = useState(() => calculateTimeRemaining(album.expires_at));
+
+  useEffect(() => {
+    if (album.expiration_type === 'unlimited' || !album.expires_at) {
+      return;
+    }
+
+    // Update every minute
+    const interval = setInterval(() => {
+      setTimeRemaining(calculateTimeRemaining(album.expires_at));
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [album.expires_at, album.expiration_type]);
+
+  if (album.expiration_type === 'unlimited' || !album.expires_at) {
+    return null;
+  }
+
+  const colorClass = getExpirationColor(timeRemaining);
+  const bgColorClass = getExpirationBgColor(timeRemaining);
+
+  if (compact) {
+    return (
+      <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg ${bgColorClass} ${colorClass} text-xs font-medium`}>
+        <Clock className="w-3 h-3" />
+        <span>{formatTimeRemaining(timeRemaining)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex flex-col gap-2 p-4 rounded-2xl ${bgColorClass} ${colorClass}`}>
+      <div className="flex items-center gap-2">
+        <Clock className="w-4 h-4" />
+        <span className="font-medium text-sm">Срок действия альбома</span>
+      </div>
+      <div className="text-sm">
+        <p className="font-semibold">Осталось: {formatTimeRemaining(timeRemaining)}</p>
+        <p className="opacity-80 mt-1">До: {formatExpirationDate(album.expires_at)}</p>
+      </div>
+    </div>
+  );
+});
 
 // --- Компонент фото с lazy загрузкой ---
 const PhotoCard = memo(function PhotoCard({
@@ -346,7 +347,7 @@ const ModalWrapper = ({ isOpen, onClose, title, children }: ModalWrapperProps) =
   );
 };
 
-const ShareModal = ({ isOpen, onClose, title, type, shareTarget }: ShareModalProps) => {
+const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => {
   const [accessType, setAccessType] = useState<ShareMode>('public');
   const [password, setPassword] = useState('');
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
@@ -373,24 +374,37 @@ const ShareModal = ({ isOpen, onClose, title, type, shareTarget }: ShareModalPro
 
     setIsGenerating(true);
     setErrorMessage('');
-    const token = Math.random().toString(36).substring(2, 15);
-    const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'https://gallery.app';
-    const pathname = typeof window !== 'undefined' ? getAppBasePath(window.location.pathname) : '/';
-    const payload = {
-      version: 1,
-      token,
-      type,
-      title,
-      accessType,
-      album: shareTarget.album ? serializeAlbum(shareTarget.album) : null,
-      photo: shareTarget.photo ? serializePhoto(shareTarget.photo) : null,
-      photos: shareTarget.photos,
-      passwordHash: accessType === 'password' ? await hashPasswordValue(password.trim()) : null,
-    } as ShareData;
-    const encodedPayload = encodeSharePayload(payload);
-    setGeneratedLink(`${origin}${pathname}#/share/${type}/${token}?data=${encodedPayload}`);
-    setIsCopied(false);
-    setIsGenerating(false);
+
+    try {
+      let response;
+      
+      // Call backend API to create share link
+      if (type === 'album' && shareTarget.album) {
+        response = await shareAPI.createAlbumShare(
+          shareTarget.album.id.toString(),
+          accessType === 'password' ? password.trim() : undefined
+        );
+      } else if (type === 'photo' && shareTarget.photo) {
+        response = await shareAPI.createPhotoShare(
+          shareTarget.photo.id.toString(),
+          accessType === 'password' ? password.trim() : undefined
+        );
+      } else {
+        setErrorMessage('Неверные данные для шаринга.');
+        setIsGenerating(false);
+        return;
+      }
+
+      const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'https://gallery.app';
+      const pathname = typeof window !== 'undefined' ? getAppBasePath(window.location.pathname) : '/';
+      
+      setGeneratedLink(`${origin}${pathname}#/share/${type}/${response.data.token}`);
+      setIsCopied(false);
+    } catch (error: any) {
+      setErrorMessage(error.response?.data?.detail || 'Не удалось создать ссылку.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const copyToClipboard = () => {
@@ -477,7 +491,7 @@ const SharedContentView = ({
   onBack,
 }: SharedContentViewProps) => {
   const sharedPhotos = shareData.type === 'album' ? shareData.photos : shareData.photo ? [shareData.photo] : [];
-  const isLocked = shareData.accessType === 'password';
+  const isLocked = shareData.passwordRequired && (!shareData.photos || shareData.photos.length === 0);
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? 'dark' : ''}`}>
@@ -492,6 +506,15 @@ const SharedContentView = ({
             </div>
 
             <div className="flex items-center gap-3">
+              {!isLocked && shareData.type === 'album' && (
+                <button 
+                  onClick={() => downloadSharedAlbum(shareData.token, shareData.title, shareData.passwordHash || undefined)}
+                  className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
+                  title="Скачать альбом"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+              )}
               <button onClick={onToggleTheme} className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors">
                 {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
@@ -503,6 +526,24 @@ const SharedContentView = ({
         </nav>
 
         <main className="max-w-6xl mx-auto px-4 sm:px-8 py-10">
+          {/* Отображение срока действия для shared альбома */}
+          {!isLocked && shareData.expirationType !== 'unlimited' && shareData.expiresAt && (
+            <div className="mb-6">
+              <AlbumExpirationBadge 
+                album={{
+                  id: 0,
+                  title: shareData.title,
+                  user_id: 0,
+                  created_at: new Date().toISOString(),
+                  is_public: true,
+                  expiration_type: shareData.expirationType as any,
+                  expires_at: shareData.expiresAt,
+                  auto_delete_scheduled: false,
+                }} 
+              />
+            </div>
+          )}
+          
           {isLocked ? (
             <div className="max-w-md mx-auto">
               <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-sm">
@@ -546,10 +587,26 @@ const SharedContentView = ({
                   onClick={() => onOpenPhoto(0)}
                 />
                 <div className="p-6 sm:p-8">
-                  <h2 className="text-2xl font-semibold">{shareData.photo.caption}</h2>
-                    <p className="text-neutral-500 dark:text-neutral-400 mt-2">
-                      {formatRuDate(shareData.photo.created_at)}
-                    </p>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <h2 className="text-2xl font-semibold">{shareData.photo.caption}</h2>
+                      <p className="text-neutral-500 dark:text-neutral-400 mt-2">
+                        {formatRuDate(shareData.photo.created_at)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => downloadSharedPhoto(
+                        shareData.token,
+                        shareData.photo!.id,
+                        shareData.photo!.caption || 'photo.jpg',
+                        shareData.passwordHash || undefined
+                      )}
+                      className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors flex-shrink-0"
+                      title="Скачать фото"
+                    >
+                      <Download className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -560,7 +617,7 @@ const SharedContentView = ({
               </p>
 
               <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
-                {sharedPhotos.map((photo, index) => (
+                {sharedPhotos.map((photo: any, index: number) => (
                   <div
                     key={photo.id}
                     onClick={() => onOpenPhoto(index)}
@@ -591,7 +648,14 @@ const SharedContentView = ({
 
 const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) => {
   const [name, setName] = useState('');
-  useEffect(() => { if (isOpen) setName(''); }, [isOpen]);
+  const [expirationType, setExpirationType] = useState<string>('unlimited');
+  
+  useEffect(() => { 
+    if (isOpen) {
+      setName('');
+      setExpirationType('unlimited');
+    }
+  }, [isOpen]);
 
   return (
     <ModalWrapper isOpen={isOpen} onClose={onClose} title="Новый альбом">
@@ -600,7 +664,43 @@ const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) 
           autoFocus type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Название альбома"
           className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all text-lg"
         />
-        <button onClick={() => onCreate(name)} disabled={!name.trim()}
+        
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+            Срок действия
+          </label>
+          <div className="space-y-2">
+            {[
+              { value: 'unlimited', label: 'Без ограничения' },
+              { value: '7_days', label: '7 дней' },
+              { value: '14_days', label: '14 дней' },
+              { value: '30_days', label: '30 дней' },
+            ].map((option) => (
+              <label
+                key={option.value}
+                className={`flex items-center p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                  expirationType === option.value
+                    ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-900'
+                    : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="expiration"
+                  value={option.value}
+                  checked={expirationType === option.value}
+                  onChange={(e) => setExpirationType(e.target.value)}
+                  className="w-4 h-4 text-neutral-900 dark:text-white"
+                />
+                <span className="ml-3 text-neutral-900 dark:text-white font-medium">
+                  {option.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={() => onCreate(name, expirationType)} disabled={!name.trim()}
           className="w-full py-3.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 disabled:opacity-50 text-white dark:text-neutral-900 rounded-2xl font-medium transition-all"
         >
           Создать
@@ -830,7 +930,7 @@ export default function App() {
       return {
         album,
         photo: null,
-        photos: sortPhotosByDateDesc(currentPhotos).map(serializePhoto),
+        photos: [],
       };
     }
 
@@ -838,12 +938,12 @@ export default function App() {
     if (!photo) return null;
     return {
       album: albums.find((item) => item.id === photo.album_id) || null,
-      photo: serializePhoto(photo),
-      photos: [serializePhoto(photo)],
+      photo: photo,
+      photos: [photo],
     };
   }, [albums, currentPhotos, photos, shareModal.id, shareModal.type]);
   const sharedPhotos = useMemo(() => (
-    activeShare ? (activeShare.type === 'album' ? activeShare.photos : activeShare.photo ? [activeShare.photo] : []) : []
+    activeShare ? (activeShare.type === 'album' ? (activeShare.photos || []) : activeShare.photo ? [activeShare.photo] : []) : []
   ), [activeShare]);
   const currentLightboxPhoto = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
   const currentSharedLightboxPhoto = sharedLightboxPhotoIndex !== null ? sharedPhotos[sharedLightboxPhotoIndex] : null;
@@ -924,13 +1024,57 @@ export default function App() {
   }, [currentPhotos.length, loadingPhotos, visiblePhotoCount]);
 
   useEffect(() => {
-    const syncShareState = () => {
-      const parsedShare = parseShareFromLocation(window.location);
-      setActiveShare(parsedShare);
-      setSharePasswordInput('');
-      setSharePasswordError('');
-      setIsUnlockingShare(false);
-      setSharedLightboxPhotoIndex(null);
+    const syncShareState = async () => {
+      // Check if URL contains share token
+      const shareRoute = window.location.hash.startsWith('#/share/')
+        ? window.location.hash.slice(1)
+        : window.location.pathname.startsWith('/share/')
+          ? `${window.location.pathname}${window.location.search}`
+          : null;
+
+      if (!shareRoute) {
+        setActiveShare(null);
+        return;
+      }
+
+      const segments = shareRoute.split('/').filter(Boolean);
+      if (segments.length < 3 || segments[0] !== 'share') {
+        setActiveShare(null);
+        return;
+      }
+
+      const [, type, token] = segments;
+      
+      if (type !== 'album' && type !== 'photo') {
+        setActiveShare(null);
+        return;
+      }
+
+      try {
+        // Fetch share data from server
+        const response = await shareAPI.getSharedAlbum(token);
+        setActiveShare(response.data as any);
+        setSharePasswordInput('');
+        setSharePasswordError('');
+        setIsUnlockingShare(false);
+        setSharedLightboxPhotoIndex(null);
+      } catch (error: any) {
+        if (error.response?.status === 401) {
+          // Password required - show password prompt
+          setActiveShare({
+            token,
+            type,
+            passwordRequired: true,
+            accessType: 'password',
+            title: type === 'album' ? 'Альбом' : 'Фото',
+            photos: [],
+            photo: null
+          } as any);
+        } else {
+          console.error('Failed to load shared content:', error);
+          setActiveShare(null);
+        }
+      }
     };
 
     syncShareState();
@@ -991,10 +1135,10 @@ export default function App() {
 
   const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
 
-  const handleCreateAlbum = async (name: string) => {
+  const handleCreateAlbum = async (name: string, expirationType: string) => {
     if (!name.trim()) return;
     try {
-      const createdAlbum = await api.createAlbum(name.trim());
+      const createdAlbum = await api.createAlbum(name.trim(), expirationType);
       setAlbums((prev) => [...prev, createdAlbum]);
       setSelectedAlbumId(createdAlbum.id);
       setIsCreateAlbumModalOpen(false);
@@ -1111,19 +1255,25 @@ export default function App() {
   }, []);
 
   const handleUnlockShare = async () => {
-    if (!activeShare?.passwordHash) return;
+    if (!activeShare?.token) return;
     setIsUnlockingShare(true);
-    const passwordHash = await hashPasswordValue(sharePasswordInput.trim());
-
-    if (passwordHash === activeShare.passwordHash) {
-      setActiveShare({ ...activeShare, accessType: 'public', passwordHash: null } as ShareData);
+    
+    try {
+      const response = await shareAPI.getSharedAlbum(activeShare.token, sharePasswordInput.trim());
+      console.log('Unlock success, received data:', response.data);
+      setActiveShare(response.data as any);
       setSharePasswordError('');
+      setSharePasswordInput('');
+    } catch (error: any) {
+      console.error('Unlock failed:', error);
+      if (error.response?.status === 401) {
+        setSharePasswordError('Неверный пароль. Попробуйте еще раз.');
+      } else {
+        setSharePasswordError('Произошла ошибка. Попробуйте еще раз.');
+      }
+    } finally {
       setIsUnlockingShare(false);
-      return;
     }
-
-    setSharePasswordError('Неверный пароль. Попробуйте еще раз.');
-    setIsUnlockingShare(false);
   };
 
   const handleExitShare = () => {
@@ -1163,7 +1313,14 @@ export default function App() {
             setSharedLightboxPhotoIndex((sharedLightboxPhotoIndex - 1 + sharedPhotos.length) % sharedPhotos.length);
           }}
           onDownload={() => {
-            if (currentSharedLightboxPhoto?.id) handleDownloadPhoto(currentSharedLightboxPhoto);
+            if (currentSharedLightboxPhoto?.id && activeShare) {
+              downloadSharedPhoto(
+                activeShare.token,
+                currentSharedLightboxPhoto.id,
+                currentSharedLightboxPhoto.caption || 'photo.jpg',
+                activeShare.passwordHash || undefined
+              );
+            }
           }}
           onShare={() => {}}
           onDelete={() => {}}
@@ -1319,6 +1476,13 @@ export default function App() {
               ))}
             </div>
           </div>
+
+          {/* --- Бейдж срока действия альбома --- */}
+          {currentAlbum && currentAlbum.expiration_type !== 'unlimited' && (
+            <div className="mb-6">
+              <AlbumExpirationBadge album={currentAlbum} />
+            </div>
+          )}
 
           {/* --- Сетка фотографий --- */}
           {!currentAlbum ? (
