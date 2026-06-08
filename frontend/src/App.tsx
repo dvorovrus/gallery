@@ -1,20 +1,27 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import {
-  Plus, Trash2, X, Upload, Calendar, Type,
-  ChevronLeft, ChevronRight, Share2, Globe, Lock, Copy, CheckCircle,
+  Plus, Trash2, X,
+  ChevronLeft, ChevronRight, Share2, Lock, Copy, CheckCircle,
   Sun, Moon, Image as ImageIcon, Camera, LayoutGrid, CheckSquare, Square, LogOut, Download
 } from 'lucide-react';
 import Login from './components/Login';
 import * as api from './services/api';
+import type { Album, Photo } from './types';
 
 const THEME_STORAGE_KEY = 'gallery_theme';
+const INITIAL_VISIBLE_PHOTOS = 18;
+const PHOTO_PRELOAD_COUNT = 8;
+const PHOTO_PRIORITY_COUNT = 4;
+const PHOTO_BATCH_SIZE = 18;
 const ruDateFormatter = new Intl.DateTimeFormat('ru-RU');
-const getPhotoFullUrl = (photoId) => `http://localhost:8000/photos/${photoId}`;
-const getPhotoThumbnailUrl = (photoId) => `http://localhost:8000/photos/${photoId}?thumbnail=true&width=400`;
-const sortPhotosByDateDesc = (items) => [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-const formatRuDate = (value) => ruDateFormatter.format(new Date(value));
-const serializeAlbum = (album) => ({ id: album.id, title: album.title, created_at: album.created_at });
-const serializePhoto = (photo) => ({
+const getPhotoFullUrl = (photoId: number) => `http://localhost:8000/photos/${photoId}`;
+const getPhotoThumbnailUrl = (photoId: number) => `http://localhost:8000/photos/${photoId}?thumbnail=true&width=400`;
+const sortPhotosByDateDesc = <T extends { created_at: string }>(items: T[]) =>
+  [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+const formatRuDate = (value: string) => ruDateFormatter.format(new Date(value));
+const serializeAlbum = (album: Album): SerializedAlbum => ({ id: album.id, title: album.title, created_at: album.created_at });
+const serializePhoto = (photo: DownloadablePhoto): SerializedPhoto => ({
   id: photo.id,
   caption: photo.caption,
   created_at: photo.created_at,
@@ -22,21 +29,21 @@ const serializePhoto = (photo) => ({
   thumbnailUrl: photo.thumbnailUrl || getPhotoThumbnailUrl(photo.id),
 });
 
-const toBase64Url = (value) => {
+const toBase64Url = (value: string): string => {
   if (typeof window === 'undefined') return '';
   return window.btoa(unescape(encodeURIComponent(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 };
 
-const fromBase64Url = (value) => {
+const fromBase64Url = (value: string): string => {
   if (typeof window === 'undefined') return '';
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
   return decodeURIComponent(escape(window.atob(`${normalized}${padding}`)));
 };
 
-const encodeSharePayload = (payload) => toBase64Url(JSON.stringify(payload));
+const encodeSharePayload = (payload: ShareData): string => toBase64Url(JSON.stringify(payload));
 
-const decodeSharePayload = (encodedPayload) => {
+const decodeSharePayload = (encodedPayload: string | null): ShareData | null => {
   if (!encodedPayload) return null;
   try {
     return JSON.parse(fromBase64Url(encodedPayload));
@@ -45,9 +52,9 @@ const decodeSharePayload = (encodedPayload) => {
   }
 };
 
-const bytesToHex = (bytes) => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+const bytesToHex = (bytes: Uint8Array): string => Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
 
-const hashPasswordValue = async (value) => {
+const hashPasswordValue = async (value: string): Promise<string> => {
   if (typeof window !== 'undefined' && window.crypto?.subtle) {
     const buffer = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
     return bytesToHex(new Uint8Array(buffer));
@@ -61,9 +68,146 @@ const hashPasswordValue = async (value) => {
   return `fallback-${Math.abs(hash)}`;
 };
 
-const getAppBasePath = (pathname) => pathname.startsWith('/share/') ? '/' : pathname;
+const getAppBasePath = (pathname: string): string => pathname.startsWith('/share/') ? '/' : pathname;
 
-const parseShareFromLocation = (locationLike) => {
+type ShareMode = 'public' | 'password';
+type ShareEntityType = 'album' | 'photo';
+
+interface SerializedAlbum {
+  id: number;
+  title: string;
+  created_at: string;
+}
+
+interface SerializedPhoto {
+  id: number;
+  caption: string | null;
+  created_at: string;
+  fullUrl: string;
+  thumbnailUrl: string;
+}
+
+type DownloadablePhoto = Photo | SerializedPhoto;
+
+interface ShareTarget {
+  album: Album | null;
+  photo: DownloadablePhoto | null;
+  photos: SerializedPhoto[];
+}
+
+interface SharePayloadBase {
+  version: number;
+  token: string;
+  title: string;
+  accessType: ShareMode;
+  passwordHash: string | null;
+}
+
+interface SharedAlbumPayload extends SharePayloadBase {
+  type: 'album';
+  album: SerializedAlbum | null;
+  photo: null;
+  photos: SerializedPhoto[];
+}
+
+interface SharedPhotoPayload extends SharePayloadBase {
+  type: 'photo';
+  album: SerializedAlbum | null;
+  photo: SerializedPhoto | null;
+  photos: SerializedPhoto[];
+}
+
+type ShareData = SharedAlbumPayload | SharedPhotoPayload;
+
+interface SelectedFile {
+  file: File;
+  preview: string;
+  id: string;
+}
+
+interface ModalState {
+  isOpen: boolean;
+  type: ShareEntityType | null;
+  id: number | null;
+  title: string;
+}
+
+interface PhotoCardProps {
+  photo: DownloadablePhoto;
+  index: number;
+  onPhotoLoad: (photoId: number) => void;
+  isLoaded: boolean;
+  isPriority: boolean;
+  onOpenIndex: (index: number) => void;
+  onSharePhoto: (photo: DownloadablePhoto) => void;
+  onDeletePhoto: (photo: DownloadablePhoto) => void;
+  onDownloadPhoto: (photo: DownloadablePhoto) => void;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelectPhoto: (photoId: number) => void;
+}
+
+interface ModalWrapperProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}
+
+interface ShareModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  type: ShareEntityType | null;
+  shareTarget: ShareTarget | null;
+}
+
+interface SharedContentViewProps {
+  shareData: ShareData;
+  isDarkMode: boolean;
+  onToggleTheme: () => void;
+  passwordValue: string;
+  onPasswordChange: (value: string) => void;
+  onUnlock: () => void;
+  isUnlocking: boolean;
+  passwordError: string;
+  onOpenPhoto: (index: number) => void;
+  onBack: () => void;
+}
+
+interface CreateAlbumModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreate: (name: string) => void;
+}
+
+interface UploadPhotoModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onUpload: (files: File[], caption: string) => void | Promise<void>;
+}
+
+interface DeleteConfirmModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  type: ShareEntityType | null;
+}
+
+interface LightboxProps {
+  photo: DownloadablePhoto | null;
+  photosLength: number;
+  onClose: () => void;
+  onNext: () => void;
+  onPrev: () => void;
+  onShare: () => void;
+  onDelete: () => void;
+  onDownload: () => void;
+  showActions?: boolean;
+}
+
+const parseShareFromLocation = (locationLike: Pick<Location, 'hash' | 'pathname' | 'search'>): ShareData | null => {
   const shareRoute = locationLike.hash.startsWith('#/share/')
     ? locationLike.hash.slice(1)
     : locationLike.pathname.startsWith('/share/')
@@ -77,7 +221,7 @@ const parseShareFromLocation = (locationLike) => {
   if (segments.length < 3 || segments[0] !== 'share') return null;
 
   const [, type, token] = segments;
-  const payload = decodeSharePayload(new URLSearchParams(queryString).get('data'));
+  const payload = decodeSharePayload(new URLSearchParams(queryString).get('data')) as ShareData | null;
   if (!payload || payload.type !== type || payload.token !== token) return null;
 
   return payload;
@@ -98,6 +242,7 @@ const PhotoCard = memo(function PhotoCard({
   index,
   onPhotoLoad,
   isLoaded,
+  isPriority,
   onOpenIndex,
   onSharePhoto,
   onDeletePhoto,
@@ -105,7 +250,9 @@ const PhotoCard = memo(function PhotoCard({
   isSelectionMode,
   isSelected,
   onToggleSelectPhoto,
-}: any) {
+}: PhotoCardProps) {
+  const loadingStrategy = isPriority ? 'eager' : 'lazy';
+
   return (
     <div
       className="break-inside-avoid relative group rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-200 dark:bg-neutral-800"
@@ -114,7 +261,11 @@ const PhotoCard = memo(function PhotoCard({
           onOpenIndex(index);
         }
       }}
-      style={{ cursor: isSelectionMode ? 'default' : (isLoaded ? 'zoom-in' : 'default') }}
+      style={{
+        cursor: isSelectionMode ? 'default' : (isLoaded ? 'zoom-in' : 'default'),
+        contentVisibility: 'auto',
+        containIntrinsicSize: '360px 280px',
+      }}
     >
       {/* Скелетон пока фото не загружено */}
       {!isLoaded && (
@@ -125,9 +276,11 @@ const PhotoCard = memo(function PhotoCard({
 
       <img
         src={photo.thumbnailUrl || getPhotoThumbnailUrl(photo.id)}
-        alt={photo.caption}
+        alt={photo.caption ?? 'Фото'}
         className={`w-full h-auto object-cover transition-all duration-700 ${isLoaded ? 'opacity-100 group-hover:scale-105' : 'opacity-0'}`}
-        loading="lazy"
+        loading={loadingStrategy}
+        fetchPriority={isPriority ? 'high' : 'auto'}
+        decoding="async"
         onLoad={() => onPhotoLoad(photo.id)}
       />
 
@@ -176,7 +329,7 @@ const PhotoCard = memo(function PhotoCard({
 });
 
 // --- Модальные окна (z-[70] чтобы быть поверх Лайтбокса z-[60]) ---
-const ModalWrapper = ({ isOpen, onClose, title, children }) => {
+const ModalWrapper = ({ isOpen, onClose, title, children }: ModalWrapperProps) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-white/40 dark:bg-black/60 backdrop-blur-md transition-opacity">
@@ -193,10 +346,10 @@ const ModalWrapper = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-const ShareModal = ({ isOpen, onClose, title, type, shareTarget }) => {
-  const [accessType, setAccessType] = useState('public');
+const ShareModal = ({ isOpen, onClose, title, type, shareTarget }: ShareModalProps) => {
+  const [accessType, setAccessType] = useState<ShareMode>('public');
   const [password, setPassword] = useState('');
-  const [generatedLink, setGeneratedLink] = useState(null);
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -213,7 +366,7 @@ const ShareModal = ({ isOpen, onClose, title, type, shareTarget }) => {
   }, [isOpen]);
 
   const handleGenerateLink = async () => {
-    if (!shareTarget) {
+    if (!shareTarget || !type) {
       setErrorMessage('Не удалось подготовить данные для шаринга.');
       return;
     }
@@ -231,9 +384,9 @@ const ShareModal = ({ isOpen, onClose, title, type, shareTarget }) => {
       accessType,
       album: shareTarget.album ? serializeAlbum(shareTarget.album) : null,
       photo: shareTarget.photo ? serializePhoto(shareTarget.photo) : null,
-      photos: (shareTarget.photos || []).map(serializePhoto),
+      photos: shareTarget.photos,
       passwordHash: accessType === 'password' ? await hashPasswordValue(password.trim()) : null,
-    };
+    } as ShareData;
     const encodedPayload = encodeSharePayload(payload);
     setGeneratedLink(`${origin}${pathname}#/share/${type}/${token}?data=${encodedPayload}`);
     setIsCopied(false);
@@ -322,7 +475,7 @@ const SharedContentView = ({
   passwordError,
   onOpenPhoto,
   onBack,
-}) => {
+}: SharedContentViewProps) => {
   const sharedPhotos = shareData.type === 'album' ? shareData.photos : shareData.photo ? [shareData.photo] : [];
   const isLocked = shareData.accessType === 'password';
 
@@ -388,7 +541,7 @@ const SharedContentView = ({
               <div className="overflow-hidden rounded-[2rem] bg-neutral-100 dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800">
                 <img
                   src={shareData.photo.fullUrl}
-                  alt={shareData.photo.caption}
+                  alt={shareData.photo.caption ?? 'Фото'}
                   className="w-full max-h-[75vh] object-cover cursor-zoom-in"
                   onClick={() => onOpenPhoto(0)}
                 />
@@ -413,7 +566,7 @@ const SharedContentView = ({
                     onClick={() => onOpenPhoto(index)}
                     className="break-inside-avoid relative group rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 cursor-zoom-in"
                   >
-                    <img src={photo.thumbnailUrl} alt={photo.caption} className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105" />
+                    <img src={photo.thumbnailUrl} alt={photo.caption ?? 'Фото'} className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-5">
                       <div>
                         <p className="text-white font-medium text-lg drop-shadow-md">{photo.caption}</p>
@@ -436,7 +589,7 @@ const SharedContentView = ({
   );
 };
 
-const CreateAlbumModal = ({ isOpen, onClose, onCreate }) => {
+const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) => {
   const [name, setName] = useState('');
   useEffect(() => { if (isOpen) setName(''); }, [isOpen]);
 
@@ -457,12 +610,12 @@ const CreateAlbumModal = ({ isOpen, onClose, onCreate }) => {
   );
 };
 
-const UploadPhotoModal = ({ isOpen, onClose, onUpload }) => {
-  const [selectedFiles, setSelectedFiles] = useState([]);
+const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) => {
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [caption, setCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const previewUrlsRef = useRef([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const previewUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -477,8 +630,8 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }) => {
     };
   }, [isOpen]);
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
     if (files.length > 0) {
       const newFiles = files.map(file => ({ file, preview: URL.createObjectURL(file), id: Math.random().toString(36).substring(7) }));
       previewUrlsRef.current.push(...newFiles.map((file) => file.preview));
@@ -487,7 +640,7 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeFile = (idToRemove) => {
+  const removeFile = (idToRemove: string) => {
     setSelectedFiles(prev => {
       const fileToRemove = prev.find(f => f.id === idToRemove);
       if (fileToRemove) {
@@ -564,7 +717,7 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }) => {
   );
 };
 
-const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }) => (
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }: DeleteConfirmModalProps) => (
   <ModalWrapper isOpen={isOpen} onClose={onClose} title="Удалить?">
     <p className="text-neutral-600 dark:text-neutral-400 mb-6 text-sm">
       Вы уверены, что хотите удалить <strong>{title}</strong>? 
@@ -582,7 +735,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }) => (
 );
 
 // --- Лайтбокс (z-[60]) ---
-const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDelete, onDownload, showActions = true }) => {
+const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDelete, onDownload, showActions = true }: LightboxProps) => {
   if (!photo) return null;
 
   return (
@@ -624,7 +777,7 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
       )}
 
       <div className="relative w-full h-full flex items-center justify-center p-4 sm:p-16" onClick={onClose}>
-        <img src={photo.fullUrl || getPhotoFullUrl(photo.id)} alt={photo.caption} className="max-w-full max-h-full object-contain rounded-md shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        <img src={photo.fullUrl || getPhotoFullUrl(photo.id)} alt={photo.caption ?? 'Фото'} className="max-w-full max-h-full object-contain rounded-md shadow-2xl" onClick={(e) => e.stopPropagation()} />
       </div>
     </div>
   );
@@ -633,19 +786,20 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
 
 // --- Главный компонент ---
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('auth_token'));
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('auth_token'));
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'light') return false;
     if (savedTheme === 'dark') return true;
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
-  const [albums, setAlbums] = useState([]);
-  const [photos, setPhotos] = useState([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [loadedPhotoIds, setLoadedPhotoIds] = useState<Set<number>>(new Set());
+  const [visiblePhotoCount, setVisiblePhotoCount] = useState(INITIAL_VISIBLE_PHOTOS);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Состояние для множественного выбора
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -654,24 +808,29 @@ export default function App() {
   const [isCreateAlbumModalOpen, setIsCreateAlbumModalOpen] = useState(false);
   const [isUploadPhotoModalOpen, setIsUploadPhotoModalOpen] = useState(false);
 
-  const [lightboxPhotoIndex, setLightboxPhotoIndex] = useState(null);
-  const [sharedLightboxPhotoIndex, setSharedLightboxPhotoIndex] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, id: null, title: '' });
-  const [shareModal, setShareModal] = useState({ isOpen: false, type: null, id: null, title: '' });
-  const [activeShare, setActiveShare] = useState(null);
+  const [lightboxPhotoIndex, setLightboxPhotoIndex] = useState<number | null>(null);
+  const [sharedLightboxPhotoIndex, setSharedLightboxPhotoIndex] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<ModalState>({ isOpen: false, type: null, id: null, title: '' });
+  const [shareModal, setShareModal] = useState<ModalState>({ isOpen: false, type: null, id: null, title: '' });
+  const [activeShare, setActiveShare] = useState<ShareData | null>(null);
   const [sharePasswordInput, setSharePasswordInput] = useState('');
   const [sharePasswordError, setSharePasswordError] = useState('');
   const [isUnlockingShare, setIsUnlockingShare] = useState(false);
 
   const currentAlbum = useMemo(() => albums.find(a => a.id === selectedAlbumId) || albums[0], [albums, selectedAlbumId]);
   const currentPhotos = useMemo(() => sortPhotosByDateDesc(photos.filter(p => p.album_id === selectedAlbumId)), [photos, selectedAlbumId]);
+  const visiblePhotos = useMemo(
+    () => currentPhotos.slice(0, visiblePhotoCount),
+    [currentPhotos, visiblePhotoCount],
+  );
   const shareTarget = useMemo(() => {
     if (shareModal.type === 'album') {
       const album = albums.find((item) => item.id === shareModal.id);
       if (!album) return null;
       return {
         album,
-        photos: sortPhotosByDateDesc(currentPhotos),
+        photo: null,
+        photos: sortPhotosByDateDesc(currentPhotos).map(serializePhoto),
       };
     }
 
@@ -679,13 +838,15 @@ export default function App() {
     if (!photo) return null;
     return {
       album: albums.find((item) => item.id === photo.album_id) || null,
-      photo,
-      photos: [photo],
+      photo: serializePhoto(photo),
+      photos: [serializePhoto(photo)],
     };
   }, [albums, currentPhotos, photos, shareModal.id, shareModal.type]);
   const sharedPhotos = useMemo(() => (
     activeShare ? (activeShare.type === 'album' ? activeShare.photos : activeShare.photo ? [activeShare.photo] : []) : []
   ), [activeShare]);
+  const currentLightboxPhoto = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
+  const currentSharedLightboxPhoto = sharedLightboxPhotoIndex !== null ? sharedPhotos[sharedLightboxPhotoIndex] : null;
 
   // Apply dark mode class to html element
   useEffect(() => {
@@ -712,6 +873,57 @@ export default function App() {
   }, [selectedAlbumId]);
 
   useEffect(() => {
+    setVisiblePhotoCount(Math.min(INITIAL_VISIBLE_PHOTOS, currentPhotos.length));
+  }, [currentPhotos.length, selectedAlbumId]);
+
+  useEffect(() => {
+    if (currentPhotos.length === 0) return;
+
+    const preloadCount = Math.min(PHOTO_PRELOAD_COUNT, currentPhotos.length);
+    const preloadImages: HTMLImageElement[] = [];
+
+    for (let index = 0; index < preloadCount; index += 1) {
+      const photo = currentPhotos[index];
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = photo.thumbnailUrl || getPhotoThumbnailUrl(photo.id);
+      preloadImages.push(image);
+    }
+
+    return () => {
+      preloadImages.forEach((image) => {
+        image.src = '';
+      });
+    };
+  }, [currentPhotos]);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || loadingPhotos || visiblePhotoCount >= currentPhotos.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry?.isIntersecting) return;
+
+        setVisiblePhotoCount((currentVisible) =>
+          Math.min(currentVisible + PHOTO_BATCH_SIZE, currentPhotos.length)
+        );
+      },
+      {
+        rootMargin: '800px 0px 1200px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [currentPhotos.length, loadingPhotos, visiblePhotoCount]);
+
+  useEffect(() => {
     const syncShareState = () => {
       const parsedShare = parseShareFromLocation(window.location);
       setActiveShare(parsedShare);
@@ -733,7 +945,6 @@ export default function App() {
 
   const loadAlbums = async () => {
     try {
-      setLoading(true);
       const albumsData = await api.getAlbums();
       setAlbums(albumsData);
       if (albumsData.length > 0 && !selectedAlbumId) {
@@ -741,14 +952,13 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to load albums:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const loadPhotos = async (albumId: number) => {
     setLoadingPhotos(true);
     setLoadedPhotoIds(new Set()); // Сбрасываем загруженные фото
+    setVisiblePhotoCount(INITIAL_VISIBLE_PHOTOS);
     try {
       const photosData = await api.getPhotos(albumId);
       setPhotos(photosData);
@@ -781,58 +991,65 @@ export default function App() {
 
   const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
 
-  const handleCreateAlbum = async (name) => {
+  const handleCreateAlbum = async (name: string) => {
     if (!name.trim()) return;
     try {
-      await api.createAlbum(name.trim());
-      await loadAlbums();
+      const createdAlbum = await api.createAlbum(name.trim());
+      setAlbums((prev) => [...prev, createdAlbum]);
+      setSelectedAlbumId(createdAlbum.id);
       setIsCreateAlbumModalOpen(false);
     } catch (error) {
       console.error('Failed to create album:', error);
     }
   };
 
-  const handleDeleteAlbum = async (id) => {
+  const handleDeleteAlbum = async (id: number) => {
     try {
       await api.deleteAlbum(id);
-      await loadAlbums();
-      if (selectedAlbumId === id) setSelectedAlbumId(albums[0]?.id || null);
+      setAlbums((prev) => {
+        const nextAlbums = prev.filter((album) => album.id !== id);
+        if (selectedAlbumId === id) {
+          setSelectedAlbumId(nextAlbums[0]?.id || null);
+        }
+        return nextAlbums;
+      });
+      setPhotos((prev) => prev.filter((photo) => photo.album_id !== id));
     } catch (error) {
       console.error('Failed to delete album:', error);
     }
   };
 
-  const handleUploadPhotos = async (files, caption) => {
+  const handleUploadPhotos = async (files: File[], caption: string) => {
     if (!selectedAlbumId) return;
     try {
-      await api.uploadPhotos(selectedAlbumId, files, caption);
-      await loadPhotos(selectedAlbumId);
+      const uploadedPhotos = await api.uploadPhotos(selectedAlbumId, files, caption);
+      setPhotos((prev) => sortPhotosByDateDesc([...uploadedPhotos, ...prev]));
       setIsUploadPhotoModalOpen(false);
     } catch (error) {
       console.error('Failed to upload photos:', error);
     }
   };
 
-  const handleDeletePhoto = async (id) => {
+  const handleDeletePhoto = async (id: number) => {
     try {
       await api.deletePhoto(id);
-      await loadPhotos(selectedAlbumId);
+      setPhotos((prev) => prev.filter((photo) => photo.id !== id));
       if (lightboxPhotoIndex !== null) setLightboxPhotoIndex(null);
     } catch (error) {
       console.error('Failed to delete photo:', error);
     }
   };
 
-  const handleDownloadPhoto = useCallback(async (photo) => {
+  const handleDownloadPhoto = useCallback(async (photo: DownloadablePhoto) => {
     try {
-      const fallbackName = photo?.filename || `${photo?.caption || 'photo'}.jpg`;
+      const fallbackName = 'filename' in photo && photo.filename ? photo.filename : `${photo.caption || 'photo'}.jpg`;
       await api.downloadPhoto(photo.id, fallbackName);
     } catch (error) {
       console.error('Failed to download photo:', error);
     }
   }, []);
 
-  const handleDownloadAlbum = useCallback(async (album) => {
+  const handleDownloadAlbum = useCallback(async (album: Album) => {
     try {
       await api.downloadAlbum(album.id, `${album.title || 'album'}.zip`);
     } catch (error) {
@@ -844,7 +1061,7 @@ export default function App() {
     if (selectedPhotoIds.size === 0) return;
     try {
       await api.batchDeletePhotos(Array.from(selectedPhotoIds));
-      await loadPhotos(selectedAlbumId);
+      setPhotos((prev) => prev.filter((photo) => !selectedPhotoIds.has(photo.id)));
       setSelectedPhotoIds(new Set());
       setIsSelectionMode(false);
     } catch (error) {
@@ -865,20 +1082,20 @@ export default function App() {
     setLoadedPhotoIds(prev => new Set(prev).add(photoId));
   }, []);
 
-  const handleOpenPhoto = useCallback((index) => {
+  const handleOpenPhoto = useCallback((index: number) => {
     setLightboxPhotoIndex(index);
   }, []);
 
-  const handleOpenSharedPhoto = useCallback((index) => {
+  const handleOpenSharedPhoto = useCallback((index: number) => {
     setSharedLightboxPhotoIndex(index);
   }, []);
 
-  const handleSharePhoto = useCallback((photo) => {
-    setShareModal({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption });
+  const handleSharePhoto = useCallback((photo: DownloadablePhoto) => {
+    setShareModal({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? 'Без подписи' });
   }, []);
 
-  const handleDeletePhotoPrompt = useCallback((photo) => {
-    setDeleteConfirm({ isOpen: true, type: 'photo', id: photo.id, title: 'это фото' });
+  const handleDeletePhotoPrompt = useCallback((photo: DownloadablePhoto) => {
+    setDeleteConfirm({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? 'это фото' });
   }, []);
 
   const handleToggleSelectPhoto = useCallback((photoId: number) => {
@@ -899,7 +1116,7 @@ export default function App() {
     const passwordHash = await hashPasswordValue(sharePasswordInput.trim());
 
     if (passwordHash === activeShare.passwordHash) {
-      setActiveShare({ ...activeShare, accessType: 'public', passwordHash: null });
+      setActiveShare({ ...activeShare, accessType: 'public', passwordHash: null } as ShareData);
       setSharePasswordError('');
       setIsUnlockingShare(false);
       return;
@@ -934,14 +1151,19 @@ export default function App() {
           onBack={handleExitShare}
         />
         <Lightbox 
-          photo={sharedLightboxPhotoIndex !== null ? sharedPhotos[sharedLightboxPhotoIndex] : null}
+          photo={currentSharedLightboxPhoto}
           photosLength={sharedPhotos.length}
           onClose={() => setSharedLightboxPhotoIndex(null)}
-          onNext={() => setSharedLightboxPhotoIndex((prev) => (prev + 1) % sharedPhotos.length)}
-          onPrev={() => setSharedLightboxPhotoIndex((prev) => (prev - 1 + sharedPhotos.length) % sharedPhotos.length)}
+          onNext={() => {
+            if (sharedLightboxPhotoIndex === null || sharedPhotos.length === 0) return;
+            setSharedLightboxPhotoIndex((sharedLightboxPhotoIndex + 1) % sharedPhotos.length);
+          }}
+          onPrev={() => {
+            if (sharedLightboxPhotoIndex === null || sharedPhotos.length === 0) return;
+            setSharedLightboxPhotoIndex((sharedLightboxPhotoIndex - 1 + sharedPhotos.length) % sharedPhotos.length);
+          }}
           onDownload={() => {
-            const photo = sharedLightboxPhotoIndex !== null ? sharedPhotos[sharedLightboxPhotoIndex] : null;
-            if (photo?.id) handleDownloadPhoto(photo);
+            if (currentSharedLightboxPhoto?.id) handleDownloadPhoto(currentSharedLightboxPhoto);
           }}
           onShare={() => {}}
           onDelete={() => {}}
@@ -967,8 +1189,8 @@ export default function App() {
           isOpen={deleteConfirm.isOpen} 
           onClose={() => setDeleteConfirm({ isOpen: false, type: null, id: null, title: '' })} 
           onConfirm={() => {
-            if (deleteConfirm.type === 'album') handleDeleteAlbum(deleteConfirm.id);
-            if (deleteConfirm.type === 'photo') handleDeletePhoto(deleteConfirm.id);
+            if (deleteConfirm.type === 'album' && deleteConfirm.id !== null) handleDeleteAlbum(deleteConfirm.id);
+            if (deleteConfirm.type === 'photo' && deleteConfirm.id !== null) handleDeletePhoto(deleteConfirm.id);
             setDeleteConfirm({ isOpen: false, type: null, id: null, title: '' });
           }} 
           title={deleteConfirm.title} 
@@ -977,29 +1199,32 @@ export default function App() {
         
         <ShareModal 
           isOpen={shareModal.isOpen} 
-          onClose={() => setShareModal({ ...shareModal, isOpen: false })} 
+          onClose={() => setShareModal((prev) => ({ ...prev, isOpen: false }))} 
           title={shareModal.title} 
           type={shareModal.type} 
           shareTarget={shareTarget}
         />
         
         <Lightbox 
-          photo={lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null} 
+          photo={currentLightboxPhoto} 
           photosLength={currentPhotos.length} 
           onClose={() => setLightboxPhotoIndex(null)}
-          onNext={() => setLightboxPhotoIndex((prev) => (prev + 1) % currentPhotos.length)} 
-          onPrev={() => setLightboxPhotoIndex((prev) => (prev - 1 + currentPhotos.length) % currentPhotos.length)}
+          onNext={() => {
+            if (lightboxPhotoIndex === null || currentPhotos.length === 0) return;
+            setLightboxPhotoIndex((lightboxPhotoIndex + 1) % currentPhotos.length);
+          }} 
+          onPrev={() => {
+            if (lightboxPhotoIndex === null || currentPhotos.length === 0) return;
+            setLightboxPhotoIndex((lightboxPhotoIndex - 1 + currentPhotos.length) % currentPhotos.length);
+          }}
           onDownload={() => {
-            const photo = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
-            if (photo) handleDownloadPhoto(photo);
+            if (currentLightboxPhoto) handleDownloadPhoto(currentLightboxPhoto);
           }}
           onShare={() => {
-            const photo = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
-            if (photo) handleSharePhoto(photo);
+            if (currentLightboxPhoto) handleSharePhoto(currentLightboxPhoto);
           }}
           onDelete={() => {
-            const photo = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
-            if (photo) handleDeletePhotoPrompt(photo);
+            if (currentLightboxPhoto) handleDeletePhotoPrompt(currentLightboxPhoto);
           }} 
         />
 
@@ -1171,12 +1396,13 @@ export default function App() {
                 // Показываем скелетоны во время начальной загрузки
                 Array.from({ length: 6 }).map((_, i) => <PhotoSkeleton key={`skeleton-${i}`} />)
               ) : (
-                currentPhotos.map((photo, index) => (
+                visiblePhotos.map((photo, index) => (
                   <PhotoCard
                     key={photo.id}
                     photo={photo}
                     index={index}
                     isLoaded={loadedPhotoIds.has(photo.id)}
+                    isPriority={index < PHOTO_PRIORITY_COUNT}
                     onPhotoLoad={handlePhotoLoad}
                     onOpenIndex={handleOpenPhoto}
                     onDownloadPhoto={handleDownloadPhoto}
@@ -1188,6 +1414,7 @@ export default function App() {
                   />
                 ))
               )}
+              <div ref={loadMoreSentinelRef} className="h-1 w-full" aria-hidden="true" />
             </div>
             </>
           )}

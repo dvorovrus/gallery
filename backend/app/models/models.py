@@ -33,6 +33,7 @@ class Photo(Base):
     id = Column(Integer, primary_key=True, index=True)
     album_id = Column(Integer, ForeignKey("albums.id"), nullable=False)
     drive_file_id = Column(String, nullable=False)
+    thumbnail_file_id = Column(String, nullable=True)
     filename = Column(String, nullable=False)
     caption = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

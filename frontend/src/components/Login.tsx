@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogIn, UserPlus } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (email: string, password: string) => Promise<void>;

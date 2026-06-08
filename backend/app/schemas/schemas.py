@@ -44,6 +44,7 @@ class PhotoResponse(PhotoBase):
     id: int
     album_id: int
     drive_file_id: str
+    thumbnail_file_id: Optional[str] = None
     filename: str
     created_at: datetime
 

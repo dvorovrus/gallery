@@ -3,10 +3,10 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./gallery.db"
 
     # JWT
-    SECRET_KEY: str
+    SECRET_KEY: str = "dev-secret-key-change-this-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
 

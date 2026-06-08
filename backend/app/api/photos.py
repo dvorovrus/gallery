@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from functools import lru_cache
 from pydantic import BaseModel
 import io
 import uuid
@@ -12,12 +11,12 @@ import mimetypes
 import zipfile
 import re
 from urllib.parse import quote
-from PIL import Image
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.api.auth import get_current_user
 from app.models.models import User, Album, Photo
 from app.schemas.schemas import PhotoResponse
+from app.services.photo_thumbnails import generate_thumbnail_bytes
 
 settings = get_settings()
 
@@ -36,18 +35,25 @@ class BatchDeleteRequest(BaseModel):
     photo_ids: List[int]
 
 
-@lru_cache(maxsize=512)
-def build_thumbnail_bytes(drive_file_id: str, width: int) -> tuple[bytes, str]:
-    file_content = storage_service.get_file(drive_file_id)
-    with Image.open(io.BytesIO(file_content)) as img:
-        aspect_ratio = img.height / img.width
-        new_height = int(width * aspect_ratio)
-        img.thumbnail((width, new_height), Image.Resampling.LANCZOS)
+def build_thumbnail_file_name(photo_id: int) -> str:
+    return f"photo_{photo_id}_thumbnail.jpg"
 
-        img_buffer = io.BytesIO()
-        img_format = img.format or "JPEG"
-        img.save(img_buffer, format=img_format, quality=85, optimize=True)
-        return img_buffer.getvalue(), f"image/{img_format.lower()}"
+
+def build_thumbnail_bytes(file_content: bytes, width: int) -> bytes:
+    return generate_thumbnail_bytes(file_content, width)
+
+
+def store_thumbnail_file(original_content: bytes, photo_id: int, album_folder_id: str) -> str:
+    thumbnail_bytes = build_thumbnail_bytes(original_content, 400)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f"_thumb_{photo_id}.jpg") as temp_file:
+        temp_file.write(thumbnail_bytes)
+        temp_path = temp_file.name
+
+    try:
+        return storage_service.upload_file(temp_path, build_thumbnail_file_name(photo_id), album_folder_id)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 def build_safe_filename(filename: str, fallback: str) -> str:
@@ -121,11 +127,20 @@ async def upload_photos(
             new_photo = Photo(
                 album_id=album_id,
                 drive_file_id=drive_file_id,
+                thumbnail_file_id=None,
                 filename=file.filename,
                 caption=caption or "Без подписи"
             )
 
             db.add(new_photo)
+            db.flush()
+
+            try:
+                thumbnail_file_id = store_thumbnail_file(content, new_photo.id, album_folder_id)
+                new_photo.thumbnail_file_id = thumbnail_file_id
+            except Exception as thumbnail_error:
+                print(f"Warning: Could not create thumbnail for {file.filename}: {str(thumbnail_error)}")
+
             uploaded_photos.append(new_photo)
 
         except Exception as e:
@@ -167,10 +182,22 @@ def get_photo(
     try:
         print(f"Attempting to get photo {photo_id} with drive_file_id: {photo.drive_file_id}")
         if thumbnail:
-            thumbnail_bytes, media_type = build_thumbnail_bytes(photo.drive_file_id, width)
+            if photo.thumbnail_file_id:
+                thumbnail_bytes = storage_service.get_file(photo.thumbnail_file_id)
+            else:
+                file_content = storage_service.get_file(photo.drive_file_id)
+                thumbnail_bytes = build_thumbnail_bytes(file_content, width)
+                try:
+                    user_folder_id = storage_service.create_user_folder(photo.album.user_id)
+                    album_folder_id = storage_service.create_album_folder(user_folder_id, photo.album_id)
+                    photo.thumbnail_file_id = store_thumbnail_file(file_content, photo.id, album_folder_id)
+                    db.commit()
+                except Exception as store_error:
+                    print(f"Warning: Could not persist thumbnail for photo {photo_id}: {str(store_error)}")
+
             return StreamingResponse(
                 io.BytesIO(thumbnail_bytes),
-                media_type=media_type,
+                media_type="image/jpeg",
                 headers={"Cache-Control": "public, max-age=86400, immutable"},
             )
 
@@ -283,6 +310,8 @@ def delete_photo(photo_id: int, current_user: User = Depends(get_current_user), 
     # Delete from storage
     try:
         storage_service.delete_file(photo.drive_file_id)
+        if photo.thumbnail_file_id:
+            storage_service.delete_file(photo.thumbnail_file_id)
     except Exception:
         pass
 
@@ -321,6 +350,8 @@ def batch_delete_photos(
     for photo in photos:
         try:
             storage_service.delete_file(photo.drive_file_id)
+            if photo.thumbnail_file_id:
+                storage_service.delete_file(photo.thumbnail_file_id)
         except Exception as e:
             print(f"Failed to delete photo file {photo.id}: {str(e)}")
 

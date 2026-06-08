@@ -1,19 +1,20 @@
 export interface Album {
-  id: string;
-  name: string;
+  id: number;
+  title: string;
   user_id: number;
   created_at: string;
   is_public: boolean;
 }
 
 export interface Photo {
-  id: string;
-  album_id: string;
+  id: number;
+  album_id: number;
   drive_file_id: string;
   filename: string;
-  caption: string;
-  date: string;
-  url?: string;
+  caption: string | null;
+  created_at: string;
+  fullUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface User {
@@ -28,10 +29,19 @@ export interface AuthTokens {
 }
 
 export interface ShareLink {
-  id: string;
-  album_id: string;
+  id: number;
+  album_id: number;
   token: string;
   password_required: boolean;
   expires_at: string | null;
   created_at: string;
+}
+
+export interface ApiErrorPayload {
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    request_id?: string;
+  };
 }

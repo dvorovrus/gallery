@@ -1,4 +1,6 @@
-const API_BASE_URL = 'http://localhost:8000';
+import type { Album, AuthTokens, Photo, User } from '@/types';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 let authToken: string | null = localStorage.getItem('auth_token');
 
@@ -20,6 +22,23 @@ const getHeaders = () => ({
 const getAuthOnlyHeaders = () => ({
   ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
 });
+
+const requestJson = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return response.json() as Promise<T>;
+};
+
+const requestVoid = async (path: string, init: RequestInit = {}): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+};
+
+const requestBlob = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return response;
+};
 
 const triggerBlobDownload = (blob: Blob, filename: string) => {
   const objectUrl = window.URL.createObjectURL(blob);
@@ -58,60 +77,46 @@ export const login = async (email: string, password: string) => {
 
   if (!response.ok) throw new Error('Login failed');
 
-  const data = await response.json();
+  const data = (await response.json()) as AuthTokens;
   setAuthToken(data.access_token);
   return data;
 };
 
 export const register = async (email: string, password: string) => {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+  return requestJson<User>('/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-
-  if (!response.ok) throw new Error('Registration failed');
-  return response.json();
 };
 
 // Albums
 export const getAlbums = async () => {
-  const response = await fetch(`${API_BASE_URL}/albums`, {
+  return requestJson<Album[]>('/albums', {
     headers: getHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to fetch albums');
-  return response.json();
 };
 
 export const createAlbum = async (title: string) => {
-  const response = await fetch(`${API_BASE_URL}/albums`, {
+  return requestJson<Album>('/albums', {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ title }),
   });
-
-  if (!response.ok) throw new Error('Failed to create album');
-  return response.json();
 };
 
 export const deleteAlbum = async (albumId: number) => {
-  const response = await fetch(`${API_BASE_URL}/albums/${albumId}`, {
+  return requestVoid(`/albums/${albumId}`, {
     method: 'DELETE',
     headers: getHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to delete album');
 };
 
 // Photos
 export const getPhotos = async (albumId: number) => {
-  const response = await fetch(`${API_BASE_URL}/albums/${albumId}/photos`, {
+  return requestJson<Photo[]>(`/albums/${albumId}/photos`, {
     headers: getHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to fetch photos');
-  return response.json();
 };
 
 export const uploadPhoto = async (albumId: number, file: File, caption?: string) => {
@@ -119,60 +124,48 @@ export const uploadPhoto = async (albumId: number, file: File, caption?: string)
   formData.append('files', file);
   if (caption) formData.append('caption', caption);
 
-  const response = await fetch(`${API_BASE_URL}/albums/${albumId}/photos`, {
+  return requestJson<Photo[]>(`/albums/${albumId}/photos`, {
     method: 'POST',
     headers: {
       ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
     },
     body: formData,
   });
-
-  if (!response.ok) throw new Error('Failed to upload photo');
-  return response.json();
 };
 
 export const uploadPhotos = async (albumId: number, files: File[], caption?: string) => {
   const formData = new FormData();
-  files.forEach(file => formData.append('files', file));
+  files.forEach((file) => formData.append('files', file));
   if (caption) formData.append('caption', caption);
 
-  const response = await fetch(`${API_BASE_URL}/albums/${albumId}/photos`, {
+  return requestJson<Photo[]>(`/albums/${albumId}/photos`, {
     method: 'POST',
     headers: {
       ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
     },
     body: formData,
   });
-
-  if (!response.ok) throw new Error('Failed to upload photos');
-  return response.json();
 };
 
 export const deletePhoto = async (photoId: number) => {
-  const response = await fetch(`${API_BASE_URL}/photos/${photoId}`, {
+  return requestVoid(`/photos/${photoId}`, {
     method: 'DELETE',
     headers: getHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to delete photo');
 };
 
 export const batchDeletePhotos = async (photoIds: number[]) => {
-  const response = await fetch(`${API_BASE_URL}/photos/batch-delete`, {
+  return requestVoid('/photos/batch-delete', {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ photo_ids: photoIds }),
   });
-
-  if (!response.ok) throw new Error('Failed to batch delete photos');
 };
 
 export const downloadPhoto = async (photoId: number, fallbackName: string) => {
-  const response = await fetch(`${API_BASE_URL}/photos/${photoId}/download`, {
+  const response = await requestBlob(`/photos/${photoId}/download`, {
     headers: getAuthOnlyHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to download photo');
 
   const blob = await response.blob();
   const matchedName = getFilenameFromDisposition(response.headers.get('Content-Disposition'));
@@ -180,11 +173,9 @@ export const downloadPhoto = async (photoId: number, fallbackName: string) => {
 };
 
 export const downloadAlbum = async (albumId: number, fallbackName: string) => {
-  const response = await fetch(`${API_BASE_URL}/albums/${albumId}/download`, {
+  const response = await requestBlob(`/albums/${albumId}/download`, {
     headers: getAuthOnlyHeaders(),
   });
-
-  if (!response.ok) throw new Error('Failed to download album');
 
   const blob = await response.blob();
   const matchedName = getFilenameFromDisposition(response.headers.get('Content-Disposition'));

@@ -19,8 +19,20 @@ class GoogleDriveService:
 
     def create_user_folder(self, user_id: int) -> str:
         """Создать папку пользователя в корневой папке"""
+        folder_name = f'user_{user_id}'
+        query = f"name='{folder_name}' and '{self.root_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = self.service.files().list(
+            q=query,
+            fields='files(id, name)',
+            supportsAllDrives=True
+        ).execute()
+        items = results.get('files', [])
+
+        if items:
+            return items[0]['id']
+
         folder_metadata = {
-            'name': f'user_{user_id}',
+            'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [self.root_folder_id]
         }
@@ -33,8 +45,20 @@ class GoogleDriveService:
 
     def create_album_folder(self, user_folder_id: str, album_id: int) -> str:
         """Создать папку альбома в папке пользователя"""
+        folder_name = f'album_{album_id}'
+        query = f"name='{folder_name}' and '{user_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = self.service.files().list(
+            q=query,
+            fields='files(id, name)',
+            supportsAllDrives=True
+        ).execute()
+        items = results.get('files', [])
+
+        if items:
+            return items[0]['id']
+
         folder_metadata = {
-            'name': f'album_{album_id}',
+            'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [user_folder_id]
         }

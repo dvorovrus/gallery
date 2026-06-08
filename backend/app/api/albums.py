@@ -56,6 +56,8 @@ def delete_album(album_id: int, current_user: User = Depends(get_current_user), 
     for photo in photos:
         try:
             storage_service.delete_file(photo.drive_file_id)
+            if photo.thumbnail_file_id:
+                storage_service.delete_file(photo.thumbnail_file_id)
         except Exception as e:
             print(f"Failed to delete photo file {photo.id}: {str(e)}")
 
