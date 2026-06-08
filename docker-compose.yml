@@ -40,6 +40,8 @@ services:
     volumes:
       - gallery-uploads:/app/uploads
       - ./backend/gallery.db:/app/gallery.db
+      - ./backend/oauth_credentials.json:/app/oauth_credentials.json
+      - ./backend/token.json:/app/token.json
     networks:
       - public-traefik
       - gallery-internal
