@@ -10,6 +10,8 @@ ENV/
 .venv/
 backend/.env
 backend/service-account.json
+backend/token.json
+backend/oauth_credentials.json
 *.db
 pip-log.txt
 pip-delete-this-directory.txt
