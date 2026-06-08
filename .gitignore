@@ -48,3 +48,4 @@ uploads/
 # Temporary files
 .playwright-mcp/
 *.tmp
+temp_deploy/
