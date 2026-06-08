@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: gallery-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - public-traefik
+      - gallery-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=public-traefik"
+
+      # HTTP Router (Redirect to HTTPS)
+      - 'traefik.http.routers.gallery-frontend-http.rule=Host(`${DOMAIN:-gallery.example.com}`)'
+      - "traefik.http.routers.gallery-frontend-http.middlewares=gallery-redirect"
+      - "traefik.http.middlewares.gallery-redirect.redirectscheme.scheme=https"
+
+      # HTTPS Router
+      - 'traefik.http.routers.gallery-frontend.rule=Host(`${DOMAIN:-gallery.example.com}`)'
+      - "traefik.http.routers.gallery-frontend.entrypoints=websecure"
+      - "traefik.http.routers.gallery-frontend.tls=true"
+      - "traefik.http.routers.gallery-frontend.tls.certresolver=le"
+      - "traefik.http.services.gallery-frontend.loadbalancer.server.port=80"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: gallery-backend:latest
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    volumes:
+      - gallery-uploads:/app/uploads
+      - ./backend/gallery.db:/app/gallery.db
+    networks:
+      - public-traefik
+      - gallery-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=public-traefik"
+
+      # API HTTPS Router
+      - 'traefik.http.routers.gallery-backend.rule=Host(`${DOMAIN:-gallery.example.com}`) && (PathPrefix(`/api`) || PathPrefix(`/docs`) || PathPrefix(`/redoc`) || PathPrefix(`/openapi.json`) || PathPrefix(`/healthz`))'
+      - "traefik.http.routers.gallery-backend.entrypoints=websecure"
+      - "traefik.http.routers.gallery-backend.tls=true"
+      - "traefik.http.routers.gallery-backend.tls.certresolver=le"
+      - "traefik.http.services.gallery-backend.loadbalancer.server.port=8000"
+
+      # Health check configuration for Traefik
+      - "traefik.http.services.gallery-backend.loadbalancer.healthcheck.path=/healthz"
+      - "traefik.http.services.gallery-backend.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.gallery-backend.loadbalancer.healthcheck.timeout=5s"
+
+networks:
+  public-traefik:
+    external: true
+
+  gallery-internal:
+    driver: bridge
+
+volumes:
+  gallery-uploads:
+    driver: local

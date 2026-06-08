@@ -224,14 +224,57 @@ const AlbumExpirationBadge = memo(function AlbumExpirationBadge({ album, compact
   }
 
   return (
-    <div className={`flex flex-col gap-2 p-4 rounded-2xl ${bgColorClass} ${colorClass}`}>
-      <div className="flex items-center gap-2">
-        <Clock className="w-4 h-4" />
-        <span className="font-medium text-sm">Срок действия альбома</span>
-      </div>
-      <div className="text-sm">
-        <p className="font-semibold">Осталось: {formatTimeRemaining(timeRemaining)}</p>
-        <p className="opacity-80 mt-1">До: {formatExpirationDate(album.expires_at)}</p>
+    <div className="relative overflow-hidden p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 transition-all duration-300">
+      {/* Subtle gradient overlay */}
+      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-neutral-200/50 to-transparent dark:from-neutral-800/50 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
+      
+      <div className="relative flex items-center justify-between gap-4">
+        {/* Left side - Icon and info */}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={`p-2 rounded-xl ${bgColorClass} ${colorClass} flex-shrink-0`}>
+            <Clock className="w-4 h-4" />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${colorClass} truncate`}>
+              Удаление через {formatTimeRemaining(timeRemaining)}
+            </p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+              {formatExpirationDate(album.expires_at)}
+            </p>
+          </div>
+        </div>
+        
+        {/* Right side - Progress circle */}
+        <div className="relative flex-shrink-0">
+          <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+            <circle
+              cx="24"
+              cy="24"
+              r="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              className="text-neutral-200 dark:text-neutral-800"
+            />
+            <circle
+              cx="24"
+              cy="24"
+              r="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              className={`${colorClass} transition-all duration-1000`}
+              strokeDasharray={`${Math.min(100, (timeRemaining.totalSeconds / (album.expiration_type === '7_days' ? 604800 : album.expiration_type === '14_days' ? 1209600 : 2592000)) * 125.6)} 125.6`}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className={`text-xs font-bold ${colorClass}`}>
+              {Math.round(Math.min(100, (timeRemaining.totalSeconds / (album.expiration_type === '7_days' ? 604800 : album.expiration_type === '14_days' ? 1209600 : 2592000)) * 100))}%
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -508,17 +551,18 @@ const SharedContentView = ({
             <div className="flex items-center gap-3">
               {!isLocked && shareData.type === 'album' && (
                 <button 
-                  onClick={() => downloadSharedAlbum(shareData.token, shareData.title, shareData.passwordHash || undefined)}
-                  className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
+                  onClick={() => downloadSharedAlbum(shareData.token, shareData.title, shareData.password || undefined)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm"
                   title="Скачать альбом"
                 >
-                  <Download className="w-5 h-5" />
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Скачать</span>
                 </button>
               )}
               <button onClick={onToggleTheme} className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors">
                 {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
-              <button onClick={onBack} className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all">
+              <button onClick={onBack} className="px-4 py-2.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-neutral-900 dark:text-white rounded-full font-medium transition-all">
                 В галерею
               </button>
             </div>
@@ -586,7 +630,7 @@ const SharedContentView = ({
                   className="w-full max-h-[75vh] object-cover cursor-zoom-in"
                   onClick={() => onOpenPhoto(0)}
                 />
-                <div className="p-6 sm:p-8">
+                  <div className="p-6 sm:p-8">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <h2 className="text-2xl font-semibold">{shareData.photo.caption}</h2>
@@ -599,12 +643,13 @@ const SharedContentView = ({
                         shareData.token,
                         shareData.photo!.id,
                         shareData.photo!.caption || 'photo.jpg',
-                        shareData.passwordHash || undefined
+                        shareData.password || undefined
                       )}
-                      className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors flex-shrink-0"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm flex-shrink-0"
                       title="Скачать фото"
                     >
-                      <Download className="w-5 h-5" />
+                      <Download className="w-4 h-4" />
+                      <span>Скачать</span>
                     </button>
                   </div>
                 </div>
@@ -620,12 +665,33 @@ const SharedContentView = ({
                 {sharedPhotos.map((photo: any, index: number) => (
                   <div
                     key={photo.id}
-                    onClick={() => onOpenPhoto(index)}
-                    className="break-inside-avoid relative group rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 cursor-zoom-in"
+                    className="break-inside-avoid relative group rounded-2xl sm:rounded-3xl overflow-hidden bg-neutral-100 dark:bg-neutral-900"
                   >
-                    <img src={photo.thumbnailUrl} alt={photo.caption ?? 'Фото'} className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-5">
-                      <div>
+                    <img 
+                      src={photo.thumbnailUrl} 
+                      alt={photo.caption ?? 'Фото'} 
+                      className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105 cursor-zoom-in"
+                      onClick={() => onOpenPhoto(index)}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 sm:p-6">
+                      <div className="flex justify-end gap-2 transform -translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            downloadSharedPhoto(
+                              shareData.token,
+                              photo.id,
+                              photo.caption || 'photo.jpg',
+                              shareData.password || undefined
+                            );
+                          }} 
+                          className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" 
+                          title="Скачать"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                         <p className="text-white font-medium text-lg drop-shadow-md">{photo.caption}</p>
                         <p className="text-white/80 text-sm mt-1">{formatRuDate(photo.created_at)}</p>
                       </div>
@@ -1261,7 +1327,8 @@ export default function App() {
     try {
       const response = await shareAPI.getSharedAlbum(activeShare.token, sharePasswordInput.trim());
       console.log('Unlock success, received data:', response.data);
-      setActiveShare(response.data as any);
+      // Сохраняем введённый пароль для последующего использования при скачивании
+      setActiveShare({ ...response.data, password: sharePasswordInput.trim() } as any);
       setSharePasswordError('');
       setSharePasswordInput('');
     } catch (error: any) {
@@ -1318,7 +1385,7 @@ export default function App() {
                 activeShare.token,
                 currentSharedLightboxPhoto.id,
                 currentSharedLightboxPhoto.caption || 'photo.jpg',
-                activeShare.passwordHash || undefined
+                activeShare.password || undefined
               );
             }
           }}
