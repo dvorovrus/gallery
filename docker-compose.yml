@@ -26,7 +26,7 @@ services:
       - "traefik.http.routers.gallery-backend.entrypoints=websecure"
       - "traefik.http.routers.gallery-backend.tls=true"
       - "traefik.http.routers.gallery-backend.tls.certresolver=le"
-      - "traefik.http.routers.gallery-backend.priority=10"
+      - "traefik.http.routers.gallery-backend.priority=100"
       - "traefik.http.services.gallery-backend.loadbalancer.server.port=8000"
 
       # Health check configuration for Traefik
