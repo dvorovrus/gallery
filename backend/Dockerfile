@@ -35,9 +35,10 @@ COPY . .
 # Создание директории для uploads
 RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 
-# Создание non-root пользователя
+# Создание non-root пользователя и установка прав
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /root/.local
 
 USER appuser
 
