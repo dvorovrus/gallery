@@ -51,6 +51,7 @@ services:
 
       # HTTP Router (Redirect to HTTPS)
       - 'traefik.http.routers.gallery-frontend-http.rule=Host(`${DOMAIN:-gallery.example.com}`)'
+      - "traefik.http.routers.gallery-frontend-http.entrypoints=web"
       - "traefik.http.routers.gallery-frontend-http.middlewares=gallery-redirect"
       - "traefik.http.middlewares.gallery-redirect.redirectscheme.scheme=https"
 
