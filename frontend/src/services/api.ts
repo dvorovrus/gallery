@@ -1,6 +1,6 @@
 import type { Album, AuthTokens, Photo, User } from '@/types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 let authToken: string | null = localStorage.getItem('auth_token');
 
