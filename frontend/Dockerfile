@@ -12,6 +12,9 @@ RUN npm ci
 # Копирование исходного кода
 COPY . .
 
+ARG VITE_API_URL=""
+ENV VITE_API_URL=$VITE_API_URL
+
 # Сборка приложения
 RUN npm run build
 

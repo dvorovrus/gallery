@@ -16,10 +16,22 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
+      '/auth': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-      }
+      },
+      '/albums': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/photos': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/share': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })

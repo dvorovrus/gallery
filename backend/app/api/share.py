@@ -174,8 +174,8 @@ def get_shared_content(
                 "id": photo.id,
                 "caption": photo.caption,
                 "created_at": photo.created_at,
-                "fullUrl": f"http://localhost:8000/photos/{photo.id}",
-                "thumbnailUrl": f"http://localhost:8000/photos/{photo.id}?thumbnail=true&width=400"
+                "fullUrl": f"/photos/{photo.id}",
+                "thumbnailUrl": f"/photos/{photo.id}?thumbnail=true&width=400"
             })
 
         return {
@@ -212,8 +212,8 @@ def get_shared_content(
             "id": photo.id,
             "caption": photo.caption,
             "created_at": photo.created_at,
-            "fullUrl": f"http://localhost:8000/photos/{photo.id}",
-            "thumbnailUrl": f"http://localhost:8000/photos/{photo.id}?thumbnail=true&width=400"
+            "fullUrl": f"/photos/{photo.id}",
+            "thumbnailUrl": f"/photos/{photo.id}?thumbnail=true&width=400"
         }
 
         return {
