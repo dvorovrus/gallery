@@ -17,15 +17,15 @@ const PHOTO_PRELOAD_COUNT = 8;
 const PHOTO_PRIORITY_COUNT = 4;
 const PHOTO_BATCH_SIZE = 18;
 const ruDateFormatter = new Intl.DateTimeFormat('ru-RU');
-const getPhotoFullUrl = (photoId: number) => `http://localhost:8000/photos/${photoId}`;
-const getPhotoThumbnailUrl = (photoId: number) => `http://localhost:8000/photos/${photoId}?thumbnail=true&width=400`;
+const getPhotoFullUrl = (photoId: number) => `/photos/${photoId}`;
+const getPhotoThumbnailUrl = (photoId: number) => `/photos/${photoId}?thumbnail=true&width=400`;
 const sortPhotosByDateDesc = <T extends { created_at: string }>(items: T[]) =>
   [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 const formatRuDate = (value: string) => ruDateFormatter.format(new Date(value));
 
 const downloadSharedPhoto = async (token: string, photoId: number, filename: string, password?: string) => {
   try {
-    const url = new URL(`http://localhost:8000/share/${token}/download/photo/${photoId}`);
+    const url = new URL(`/share/${token}/download/photo/${photoId}`, window.location.origin);
     if (password) {
       url.searchParams.set('password', password);
     }
@@ -47,7 +47,7 @@ const downloadSharedPhoto = async (token: string, photoId: number, filename: str
 
 const downloadSharedAlbum = async (token: string, albumName: string, password?: string) => {
   try {
-    const url = new URL(`http://localhost:8000/share/${token}/download/album`);
+    const url = new URL(`/share/${token}/download/album`, window.location.origin);
     if (password) {
       url.searchParams.set('password', password);
     }
