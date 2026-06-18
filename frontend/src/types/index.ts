@@ -61,3 +61,10 @@ export interface GoogleDriveTestResponse {
   folder_id?: string;
   can_edit?: boolean;
 }
+
+export interface UserInfo {
+  id: number;
+  email: string;
+  role: string;
+  created_at: string;
+}

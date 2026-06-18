@@ -1,4 +1,4 @@
-import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse } from '@/types';
+import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse, UserInfo } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -217,6 +217,28 @@ export const testGoogleDriveConnection = async () => {
 
 export const removeGoogleDriveConfig = async () => {
   return requestVoid('/settings/google-drive', {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+};
+
+// Admin Management
+export const getAllUsers = async () => {
+  return requestJson<UserInfo[]>('/admins', {
+    headers: getHeaders(),
+  });
+};
+
+export const updateUserRole = async (userId: number, role: string) => {
+  return requestJson('/admins/update-role', {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ user_id: userId, role }),
+  });
+};
+
+export const deleteUser = async (userId: number) => {
+  return requestVoid(`/admins/${userId}`, {
     method: 'DELETE',
     headers: getHeaders(),
   });

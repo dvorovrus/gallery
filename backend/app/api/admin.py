@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 import json
 import os
@@ -8,7 +8,17 @@ from app.core.database import get_db
 from app.api.auth import get_current_user
 from app.models.models import User, Settings
 
-router = APIRouter(tags=["settings"])
+router = APIRouter(tags=["admin"])
+
+# Helper function to check if user is admin
+def require_admin(current_user: User = Depends(get_current_user)):
+    """Check if current user is admin"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
 
 class GoogleDriveSettings(BaseModel):
     folder_id: str
@@ -19,16 +29,8 @@ class SettingsResponse(BaseModel):
     google_drive_folder_id: Optional[str] = None
 
 @router.get("/settings", response_model=SettingsResponse)
-def get_settings_status(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_settings_status(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     """Получить статус настроек Google Drive"""
-    
-    # Проверяем, что пользователь админ (первый зарегистрированный)
-    first_user = db.query(User).order_by(User.id).first()
-    if not first_user or current_user.id != first_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can access settings"
-        )
     
     # Проверяем наличие настроек Google Drive
     folder_id_setting = db.query(Settings).filter(Settings.key == "google_drive_folder_id").first()
@@ -46,18 +48,10 @@ def get_settings_status(current_user: User = Depends(get_current_user), db: Sess
 async def configure_google_drive(
     folder_id: str,
     service_account_file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     """Настроить Google Drive через загрузку service-account.json"""
-    
-    # Проверяем, что пользователь админ
-    first_user = db.query(User).order_by(User.id).first()
-    if not first_user or current_user.id != first_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can configure settings"
-        )
     
     # Проверяем что файл JSON
     if not service_account_file.filename.endswith('.json'):
@@ -126,18 +120,10 @@ async def configure_google_drive(
 
 @router.delete("/settings/google-drive")
 def remove_google_drive_config(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     """Удалить настройки Google Drive"""
-    
-    # Проверяем, что пользователь админ
-    first_user = db.query(User).order_by(User.id).first()
-    if not first_user or current_user.id != first_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can configure settings"
-        )
     
     # Удаляем настройки из БД
     db.query(Settings).filter(Settings.key.in_([
@@ -151,18 +137,10 @@ def remove_google_drive_config(
 
 @router.post("/settings/google-drive/test")
 def test_google_drive_connection(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     """Протестировать подключение к Google Drive"""
-    
-    # Проверяем, что пользователь админ
-    first_user = db.query(User).order_by(User.id).first()
-    if not first_user or current_user.id != first_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin can test connection"
-        )
     
     # Получаем настройки
     folder_id_setting = db.query(Settings).filter(Settings.key == "google_drive_folder_id").first()
@@ -207,3 +185,111 @@ def test_google_drive_connection(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to connect to Google Drive: {str(e)}"
         )
+
+
+# Admin Management Endpoints
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    created_at: str
+
+class UpdateUserRoleRequest(BaseModel):
+    user_id: int
+    role: str  # "user" or "admin"
+
+@router.get("/admins", response_model=List[UserResponse])
+def get_all_users(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Получить список всех пользователей"""
+    users = db.query(User).all()
+    return [
+        UserResponse(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            created_at=user.created_at.isoformat()
+        )
+        for user in users
+    ]
+
+@router.post("/admins/update-role")
+def update_user_role(
+    request: UpdateUserRoleRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Изменить роль пользователя (сделать админом или обычным пользователем)"""
+    
+    # Проверяем что роль валидна
+    if request.role not in ["user", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role must be 'user' or 'admin'"
+        )
+    
+    # Находим пользователя
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Нельзя изменить роль самому себе
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own role"
+        )
+    
+    # Обновляем роль
+    user.role = request.role
+    db.commit()
+    db.refresh(user)
+    
+    return {
+        "success": True,
+        "message": f"User {user.email} role updated to {request.role}",
+        "user": UserResponse(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            created_at=user.created_at.isoformat()
+        )
+    }
+
+@router.delete("/admins/{user_id}")
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Удалить пользователя (только для админов)"""
+    
+    # Находим пользователя
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Нельзя удалить самого себя
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete yourself"
+        )
+    
+    # Удаляем пользователя (каскадно удалятся альбомы и фото)
+    db.delete(user)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"User {user.email} deleted successfully"
+    }

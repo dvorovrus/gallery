@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Upload, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, AlertCircle, Trash2, Users, Shield, UserX } from 'lucide-react';
 import * as api from '@/services/api';
+import type { UserInfo } from '@/types';
 
 export default function Settings() {
   const [settings, setSettings] = useState<any>(null);
@@ -12,9 +13,15 @@ export default function Settings() {
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+  
+  // Admin management states
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [activeTab, setActiveTab] = useState<'google-drive' | 'users'>('google-drive');
 
   useEffect(() => {
     loadSettings();
+    loadUsers();
   }, []);
 
   const loadSettings = async () => {
@@ -30,6 +37,47 @@ export default function Settings() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const data = await api.getAllUsers();
+      setUsers(data);
+    } catch (err: any) {
+      console.error('Failed to load users:', err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleToggleAdmin = async (userId: number, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    const action = newRole === 'admin' ? 'promote to admin' : 'remove admin rights';
+    
+    if (!confirm(`Are you sure you want to ${action} this user?`)) {
+      return;
+    }
+
+    try {
+      await api.updateUserRole(userId, newRole);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (userId: number, userEmail: string) => {
+    if (!confirm(`Are you sure you want to delete user ${userEmail}? This will also delete all their albums and photos.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteUser(userId);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -128,6 +176,36 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Tabs */}
+        <div className="mb-6 border-b border-gray-200">
+          <div className="flex gap-4">
+            <button
+              onClick={() => setActiveTab('google-drive')}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors flex items-center gap-2 ${
+                activeTab === 'google-drive'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Upload className="w-4 h-4" />
+              Google Drive
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors flex items-center gap-2 ${
+                activeTab === 'users'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Manage Admins
+            </button>
+          </div>
+        </div>
+
+        {activeTab === 'google-drive' && (
+        <>
         {/* Status Card */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Google Drive Status</h2>
@@ -293,6 +371,75 @@ export default function Settings() {
             </button>
           </form>
         </div>
+        </>
+        )}
+
+        {activeTab === 'users' && (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h2 className="text-xl font-semibold mb-4">User Management</h2>
+          <p className="text-gray-600 text-sm mb-6">
+            Manage user roles and permissions. Admins can access settings and manage other users.
+          </p>
+
+          {loadingUsers ? (
+            <div className="text-center py-8 text-gray-500">Loading users...</div>
+          ) : (
+            <div className="space-y-3">
+              {users.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{user.email}</p>
+                        <p className="text-xs text-gray-500">
+                          Registered: {new Date(user.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {user.role === 'admin' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                            <Shield className="w-3 h-3" />
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => handleToggleAdmin(user.id, user.role)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        user.role === 'admin'
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      {user.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUser(user.id, user.email)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete user"
+                    >
+                      <UserX className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              
+              {users.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No users found
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        )}
       </div>
     </div>
   );
