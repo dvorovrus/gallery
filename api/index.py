@@ -20,7 +20,7 @@ if google_creds:
     except Exception as e:
         print(f"Warning: Failed to setup Google credentials: {e}")
 
-from app.api import auth, albums, photos, share
+from app.api import auth, albums, photos, share, admin
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -42,6 +42,7 @@ app.include_router(albums.router, prefix="/albums", tags=["albums"])
 app.include_router(photos.router, prefix="/photos", tags=["photos"])
 app.include_router(photos.router, tags=["photos"])
 app.include_router(share.router, prefix="/share", tags=["share"])
+app.include_router(admin.router, tags=["admin"])
 
 @app.get("/")
 def read_root():
