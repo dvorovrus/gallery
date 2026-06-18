@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ReactNode } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Plus, Trash2, X,
   ChevronLeft, ChevronRight, Share2, Lock, Copy, CheckCircle,
@@ -7,22 +9,24 @@ import {
 } from 'lucide-react';
 import Login from './components/Login';
 import Settings from './components/Settings';
+import GeoLanguage from './components/GeoLanguage';
+import LanguageSwitcher from './components/LanguageSwitcher';
 import * as api from './services/api';
 import { shareAPI } from './api/client';
 import type { Album, Photo } from './types';
 import { calculateTimeRemaining, formatTimeRemaining, formatExpirationDate, getExpirationColor, getExpirationBgColor } from './utils/time';
+import { getLocaleForLanguage } from './i18n';
 
 const THEME_STORAGE_KEY = 'gallery_theme';
 const INITIAL_VISIBLE_PHOTOS = 18;
 const PHOTO_PRELOAD_COUNT = 8;
 const PHOTO_PRIORITY_COUNT = 4;
 const PHOTO_BATCH_SIZE = 18;
-const ruDateFormatter = new Intl.DateTimeFormat('ru-RU');
 const getPhotoFullUrl = (photoId: number) => `/photos/${photoId}`;
 const getPhotoThumbnailUrl = (photoId: number) => `/photos/${photoId}?thumbnail=true&width=400`;
 const sortPhotosByDateDesc = <T extends { created_at: string }>(items: T[]) =>
   [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-const formatRuDate = (value: string) => ruDateFormatter.format(new Date(value));
+const formatAppDate = (value: string, language?: string) => new Intl.DateTimeFormat(getLocaleForLanguage(language)).format(new Date(value));
 
 const downloadSharedPhoto = async (token: string, photoId: number, filename: string, password?: string) => {
   try {
@@ -67,8 +71,6 @@ const downloadSharedAlbum = async (token: string, albumName: string, password?: 
     console.error('Failed to download album:', error);
   }
 };
-
-const getAppBasePath = (pathname: string): string => pathname.startsWith('/share/') ? '/' : pathname;
 
 type ShareMode = 'public' | 'password';
 type ShareEntityType = 'album' | 'photo';
@@ -193,6 +195,7 @@ interface AlbumExpirationBadgeProps {
 }
 
 const AlbumExpirationBadge = memo(function AlbumExpirationBadge({ album, compact = false }: AlbumExpirationBadgeProps) {
+  const { t, i18n } = useTranslation();
   const [timeRemaining, setTimeRemaining] = useState(() => calculateTimeRemaining(album.expires_at));
 
   useEffect(() => {
@@ -219,7 +222,7 @@ const AlbumExpirationBadge = memo(function AlbumExpirationBadge({ album, compact
     return (
       <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg ${bgColorClass} ${colorClass} text-xs font-medium`}>
         <Clock className="w-3 h-3" />
-        <span>{formatTimeRemaining(timeRemaining)}</span>
+        <span>{formatTimeRemaining(timeRemaining, t)}</span>
       </div>
     );
   }
@@ -238,10 +241,10 @@ const AlbumExpirationBadge = memo(function AlbumExpirationBadge({ album, compact
           
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-semibold ${colorClass} truncate`}>
-              Удаление через {formatTimeRemaining(timeRemaining)}
+              {t('time.deleteIn', { time: formatTimeRemaining(timeRemaining, t) })}
             </p>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              {formatExpirationDate(album.expires_at)}
+              {formatExpirationDate(album.expires_at, getLocaleForLanguage(i18n.resolvedLanguage), t)}
             </p>
           </div>
         </div>
@@ -296,6 +299,7 @@ const PhotoCard = memo(function PhotoCard({
   isSelected,
   onToggleSelectPhoto,
 }: PhotoCardProps) {
+  const { t, i18n } = useTranslation();
   const loadingStrategy = isPriority ? 'eager' : 'lazy';
 
   return (
@@ -321,7 +325,7 @@ const PhotoCard = memo(function PhotoCard({
 
       <img
         src={photo.thumbnailUrl || getPhotoThumbnailUrl(photo.id)}
-        alt={photo.caption ?? 'Фото'}
+        alt={photo.caption ?? t('app.photoAlt')}
         className={`w-full h-auto object-cover transition-all duration-700 ${isLoaded ? 'opacity-100 group-hover:scale-105' : 'opacity-0'}`}
         loading={loadingStrategy}
         fetchPriority={isPriority ? 'high' : 'auto'}
@@ -352,20 +356,20 @@ const PhotoCard = memo(function PhotoCard({
       {isLoaded && !isSelectionMode && (
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 sm:p-6">
           <div className="flex justify-end gap-2 transform -translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-            <button onClick={(e) => { e.stopPropagation(); onDownloadPhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" title="Скачать">
+            <button onClick={(e) => { e.stopPropagation(); onDownloadPhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" title={t('app.download')}>
               <Download className="w-4 h-4" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onSharePhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" title="Поделиться">
+            <button onClick={(e) => { e.stopPropagation(); onSharePhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" title={t('app.share')}>
               <Share2 className="w-4 h-4" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onDeletePhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-red-500/80 backdrop-blur-md text-white rounded-full transition-colors" title="Удалить">
+            <button onClick={(e) => { e.stopPropagation(); onDeletePhoto(photo); }} className="p-2.5 bg-white/20 hover:bg-red-500/80 backdrop-blur-md text-white rounded-full transition-colors" title={t('app.delete')}>
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
 
           <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
             <p className="text-white font-medium text-lg drop-shadow-md">{photo.caption}</p>
-            <p className="text-white/80 text-sm mt-1">{formatRuDate(photo.created_at)}</p>
+            <p className="text-white/80 text-sm mt-1">{formatAppDate(photo.created_at, i18n.resolvedLanguage)}</p>
           </div>
         </div>
       )}
@@ -392,6 +396,7 @@ const ModalWrapper = ({ isOpen, onClose, title, children }: ModalWrapperProps) =
 };
 
 const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => {
+  const { t } = useTranslation();
   const [accessType, setAccessType] = useState<ShareMode>('public');
   const [password, setPassword] = useState('');
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
@@ -412,7 +417,7 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
 
   const handleGenerateLink = async () => {
     if (!shareTarget || !type) {
-      setErrorMessage('Не удалось подготовить данные для шаринга.');
+      setErrorMessage(t('modals.sharePrepareError'));
       return;
     }
 
@@ -434,18 +439,16 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
           accessType === 'password' ? password.trim() : undefined
         );
       } else {
-        setErrorMessage('Неверные данные для шаринга.');
+        setErrorMessage(t('modals.shareInvalidError'));
         setIsGenerating(false);
         return;
       }
 
       const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'https://gallery.app';
-      const pathname = typeof window !== 'undefined' ? getAppBasePath(window.location.pathname) : '/';
-      
-      setGeneratedLink(`${origin}${pathname}#/share/${type}/${response.data.token}`);
+      setGeneratedLink(`${origin}/share/${type}/${response.data.token}`);
       setIsCopied(false);
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Не удалось создать ссылку.');
+      setErrorMessage(error.response?.data?.detail || t('modals.shareCreateError'));
     } finally {
       setIsGenerating(false);
     }
@@ -465,23 +468,23 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
   };
 
   return (
-    <ModalWrapper isOpen={isOpen} onClose={onClose} title="Поделиться">
+    <ModalWrapper isOpen={isOpen} onClose={onClose} title={t('modals.shareTitle')}>
       <div className="space-y-6">
         {!generatedLink ? (
           <>
             <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl">
               <button onClick={() => setAccessType('public')} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${accessType === 'public' ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                Публично
+                {t('modals.public')}
               </button>
               <button onClick={() => setAccessType('password')} className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${accessType === 'password' ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' : 'text-neutral-500 dark:text-neutral-400'}`}>
-                С паролем
+                {t('modals.withPassword')}
               </button>
             </div>
 
             {accessType === 'password' && (
               <div className="animate-in fade-in slide-in-from-top-2">
                 <input 
-                  type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Введите пароль"
+                  type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('modals.enterPassword')}
                   className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all"
                 />
               </div>
@@ -494,7 +497,7 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
             <button onClick={handleGenerateLink} disabled={isGenerating || (accessType === 'password' && password.trim().length === 0)}
               className="w-full py-3.5 flex items-center justify-center gap-2 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 disabled:opacity-50 rounded-2xl font-medium transition-all"
             >
-              {isGenerating ? 'Создаем...' : 'Создать ссылку'}
+              {isGenerating ? t('modals.creating') : t('modals.createLink')}
             </button>
           </>
         ) : (
@@ -503,9 +506,9 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
               <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-3">
                 <CheckCircle className="w-6 h-6 text-neutral-900 dark:text-white" />
               </div>
-              <h4 className="font-medium text-neutral-900 dark:text-white">Ссылка скопирована</h4>
+              <h4 className="font-medium text-neutral-900 dark:text-white">{t('modals.linkReady')}</h4>
               <p className="text-sm text-neutral-500 mt-1 text-center">
-                {accessType === 'password' ? 'Доступ защищен паролем.' : 'Отправьте ее друзьям.'}
+                {accessType === 'password' ? t('modals.passwordProtected') : t('modals.sendToFriends')}
               </p>
             </div>
 
@@ -534,6 +537,7 @@ const SharedContentView = ({
   onOpenPhoto,
   onBack,
 }: SharedContentViewProps) => {
+  const { t, i18n } = useTranslation();
   const sharedPhotos = shareData.type === 'album' ? shareData.photos : shareData.photo ? [shareData.photo] : [];
   const isLocked = shareData.passwordRequired && (!shareData.photos || shareData.photos.length === 0);
 
@@ -544,7 +548,7 @@ const SharedContentView = ({
           <div className="max-w-6xl mx-auto px-4 sm:px-8 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                {shareData.type === 'album' ? 'Общий альбом' : 'Общее фото'}
+                {shareData.type === 'album' ? t('share.sharedAlbum') : t('share.sharedPhoto')}
               </p>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{shareData.title}</h1>
             </div>
@@ -554,17 +558,18 @@ const SharedContentView = ({
                 <button 
                   onClick={() => downloadSharedAlbum(shareData.token, shareData.title, shareData.password || undefined)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm"
-                  title="Скачать альбом"
+                  title={t('gallery.downloadAlbum')}
                 >
                   <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">Скачать</span>
+                  <span className="hidden sm:inline">{t('app.download')}</span>
                 </button>
               )}
+              <LanguageSwitcher compact />
               <button onClick={onToggleTheme} className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors">
                 {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               <button onClick={onBack} className="px-4 py-2.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-neutral-900 dark:text-white rounded-full font-medium transition-all">
-                В галерею
+                {t('app.backToGallery')}
               </button>
             </div>
           </div>
@@ -595,9 +600,9 @@ const SharedContentView = ({
                 <div className="w-14 h-14 rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 flex items-center justify-center mb-5">
                   <Lock className="w-6 h-6" />
                 </div>
-                <h2 className="text-2xl font-semibold mb-2">Нужен пароль</h2>
+                <h2 className="text-2xl font-semibold mb-2">{t('share.passwordRequired')}</h2>
                 <p className="text-neutral-500 dark:text-neutral-400 mb-6">
-                  Эта ссылка защищена паролем. Введите пароль, чтобы открыть {shareData.type === 'album' ? 'альбом' : 'фото'}.
+                  {t('share.passwordDescription', { type: shareData.type === 'album' ? t('app.album').toLowerCase() : t('app.photo').toLowerCase() })}
                 </p>
 
                 <div className="space-y-4">
@@ -606,7 +611,7 @@ const SharedContentView = ({
                     type="password"
                     value={passwordValue}
                     onChange={(event) => onPasswordChange(event.target.value)}
-                    placeholder="Введите пароль"
+                    placeholder={t('modals.enterPassword')}
                     className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all"
                   />
                   {passwordError && (
@@ -617,7 +622,7 @@ const SharedContentView = ({
                     disabled={isUnlocking || passwordValue.trim().length === 0}
                     className="w-full py-3.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 disabled:opacity-50 text-white dark:text-neutral-900 rounded-2xl font-medium transition-all"
                   >
-                    {isUnlocking ? 'Проверяем...' : 'Открыть доступ'}
+                    {isUnlocking ? t('share.unlocking') : t('share.unlock')}
                   </button>
                 </div>
               </div>
@@ -627,7 +632,7 @@ const SharedContentView = ({
               <div className="overflow-hidden rounded-[2rem] bg-neutral-100 dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800">
                 <img
                   src={shareData.photo.fullUrl}
-                  alt={shareData.photo.caption ?? 'Фото'}
+                  alt={shareData.photo.caption ?? t('app.photoAlt')}
                   className="w-full max-h-[75vh] object-cover cursor-zoom-in"
                   onClick={() => onOpenPhoto(0)}
                 />
@@ -636,7 +641,7 @@ const SharedContentView = ({
                     <div className="flex-1">
                       <h2 className="text-2xl font-semibold">{shareData.photo.caption}</h2>
                       <p className="text-neutral-500 dark:text-neutral-400 mt-2">
-                        {formatRuDate(shareData.photo.created_at)}
+                        {formatAppDate(shareData.photo.created_at, i18n.resolvedLanguage)}
                       </p>
                     </div>
                     <button
@@ -647,10 +652,10 @@ const SharedContentView = ({
                         shareData.password || undefined
                       )}
                       className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm flex-shrink-0"
-                      title="Скачать фото"
+                      title={t('app.download')}
                     >
                       <Download className="w-4 h-4" />
-                      <span>Скачать</span>
+                      <span>{t('app.download')}</span>
                     </button>
                   </div>
                 </div>
@@ -659,7 +664,7 @@ const SharedContentView = ({
           ) : sharedPhotos.length > 0 ? (
             <div className="space-y-6">
               <p className="text-neutral-500 dark:text-neutral-400">
-                {sharedPhotos.length} {sharedPhotos.length === 1 ? 'фотография' : sharedPhotos.length < 5 ? 'фотографии' : 'фотографий'}
+                {t('share.photoCount', { count: sharedPhotos.length })}
               </p>
 
               <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
@@ -670,7 +675,7 @@ const SharedContentView = ({
                   >
                     <img 
                       src={photo.thumbnailUrl} 
-                      alt={photo.caption ?? 'Фото'} 
+                      alt={photo.caption ?? t('app.photoAlt')} 
                       className="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-105 cursor-zoom-in"
                       onClick={() => onOpenPhoto(index)}
                     />
@@ -687,14 +692,14 @@ const SharedContentView = ({
                             );
                           }} 
                           className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" 
-                          title="Скачать"
+                          title={t('app.download')}
                         >
                           <Download className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                         <p className="text-white font-medium text-lg drop-shadow-md">{photo.caption}</p>
-                        <p className="text-white/80 text-sm mt-1">{formatRuDate(photo.created_at)}</p>
+                        <p className="text-white/80 text-sm mt-1">{formatAppDate(photo.created_at, i18n.resolvedLanguage)}</p>
                       </div>
                     </div>
                   </div>
@@ -704,7 +709,7 @@ const SharedContentView = ({
           ) : (
             <div className="py-24 text-center text-neutral-500 dark:text-neutral-400">
               <ImageIcon className="w-14 h-14 mx-auto mb-4 opacity-50" />
-              <p>В этой ссылке не найдено данных для отображения.</p>
+              <p>{t('share.empty')}</p>
             </div>
           )}
         </main>
@@ -714,6 +719,7 @@ const SharedContentView = ({
 };
 
 const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) => {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [expirationType, setExpirationType] = useState<string>('unlimited');
   
@@ -725,23 +731,23 @@ const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) 
   }, [isOpen]);
 
   return (
-    <ModalWrapper isOpen={isOpen} onClose={onClose} title="Новый альбом">
+    <ModalWrapper isOpen={isOpen} onClose={onClose} title={t('modals.newAlbum')}>
       <div className="space-y-6">
         <input 
-          autoFocus type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Название альбома"
+          autoFocus type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('modals.albumName')}
           className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all text-lg"
         />
         
         <div>
           <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
-            Срок действия
+            {t('modals.expiration')}
           </label>
           <div className="space-y-2">
             {[
-              { value: 'unlimited', label: 'Без ограничения' },
-              { value: '7_days', label: '7 дней' },
-              { value: '14_days', label: '14 дней' },
-              { value: '30_days', label: '30 дней' },
+              { value: 'unlimited', label: t('time.unlimited') },
+              { value: '7_days', label: t('time.7_days') },
+              { value: '14_days', label: t('time.14_days') },
+              { value: '30_days', label: t('time.30_days') },
             ].map((option) => (
               <label
                 key={option.value}
@@ -770,7 +776,7 @@ const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) 
         <button onClick={() => onCreate(name, expirationType)} disabled={!name.trim()}
           className="w-full py-3.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 disabled:opacity-50 text-white dark:text-neutral-900 rounded-2xl font-medium transition-all"
         >
-          Создать
+          {t('modals.create')}
         </button>
       </div>
     </ModalWrapper>
@@ -778,6 +784,7 @@ const CreateAlbumModal = ({ isOpen, onClose, onCreate }: CreateAlbumModalProps) 
 };
 
 const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) => {
+  const { t } = useTranslation();
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [caption, setCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -829,22 +836,22 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) 
   };
 
   return (
-    <ModalWrapper isOpen={isOpen} onClose={onClose} title="Добавить фото">
+    <ModalWrapper isOpen={isOpen} onClose={onClose} title={t('modals.addPhoto')}>
       <div className="space-y-5">
         <input type="file" accept="image/*" multiple ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
         {selectedFiles.length === 0 ? (
           <div onClick={() => fileInputRef.current?.click()} className="aspect-video w-full border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-3xl flex flex-col items-center justify-center text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:border-neutral-400 dark:hover:border-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-all">
             <Camera className="w-10 h-10 mb-3 opacity-50" />
-            <p className="font-medium">Выбрать файлы</p>
-            <p className="text-sm mt-1 text-neutral-400">Можно выбрать несколько</p>
+            <p className="font-medium">{t('modals.chooseFiles')}</p>
+            <p className="text-sm mt-1 text-neutral-400">{t('modals.multipleFiles')}</p>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400 px-1">
-              <span>Выбрано: {selectedFiles.length}</span>
+              <span>{t('modals.chosen', { count: selectedFiles.length })}</span>
               <button onClick={() => fileInputRef.current?.click()} className="text-neutral-900 dark:text-white hover:underline font-medium">
-                + Добавить еще
+                {t('modals.addMore')}
               </button>
             </div>
             <div className="grid grid-cols-3 gap-3 max-h-[30vh] overflow-y-auto hide-scrollbar rounded-2xl">
@@ -863,7 +870,7 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) 
         )}
         
         <div className="space-y-3 pt-2">
-          <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Общая подпись (необязательно)"
+          <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder={t('modals.caption')}
             className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all" />
         </div>
 
@@ -873,10 +880,10 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) 
           {isUploading ? (
             <>
               <div className="w-5 h-5 border-2 border-white/30 dark:border-neutral-900/30 border-t-white dark:border-t-neutral-900 rounded-full animate-spin" />
-              <span>Загрузка...</span>
+              <span>{t('modals.uploading')}</span>
             </>
           ) : (
-            <>Загрузить {selectedFiles.length > 0 ? selectedFiles.length : ''} {selectedFiles.length === 1 ? 'фото' : selectedFiles.length > 1 ? 'фото' : ''}</>
+            <>{t('modals.upload')} {selectedFiles.length > 0 ? selectedFiles.length : ''} {selectedFiles.length > 0 ? t('app.photo').toLowerCase() : ''}</>
           )}
         </button>
       </div>
@@ -884,25 +891,30 @@ const UploadPhotoModal = ({ isOpen, onClose, onUpload }: UploadPhotoModalProps) 
   );
 };
 
-const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }: DeleteConfirmModalProps) => (
-  <ModalWrapper isOpen={isOpen} onClose={onClose} title="Удалить?">
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }: DeleteConfirmModalProps) => {
+  const { t } = useTranslation();
+
+  return (
+  <ModalWrapper isOpen={isOpen} onClose={onClose} title={t('modals.deleteTitle')}>
     <p className="text-neutral-600 dark:text-neutral-400 mb-6 text-sm">
-      Вы уверены, что хотите удалить <strong>{title}</strong>? 
-      {type === 'album' && " Все фотографии внутри будут удалены."}
+      <Trans i18nKey="modals.deleteConfirm" values={{ title }} components={{ strong: <strong /> }} />
+      {type === 'album' && t('modals.deleteAlbumExtra')}
     </p>
     <div className="flex gap-3">
       <button onClick={onClose} className="flex-1 py-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-900 dark:text-white rounded-2xl font-medium transition-colors">
-        Отмена
+        {t('app.cancel')}
       </button>
       <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-medium transition-colors">
-        Удалить
+        {t('app.delete')}
       </button>
     </div>
   </ModalWrapper>
-);
+  );
+};
 
 // --- Лайтбокс (z-[60]) ---
 const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDelete, onDownload, showActions = true }: LightboxProps) => {
+  const { t, i18n } = useTranslation();
   if (!photo) return null;
 
   return (
@@ -910,7 +922,7 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
       <div className="absolute top-0 inset-x-0 p-6 flex justify-between items-center z-10">
         <div className="text-neutral-900 dark:text-white">
           <h3 className="font-medium text-lg">{photo.caption}</h3>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-0.5">{formatRuDate(photo.created_at)}</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-0.5">{formatAppDate(photo.created_at, i18n.resolvedLanguage)}</p>
         </div>
         <div className="flex gap-3">
           {showActions && (
@@ -944,7 +956,7 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
       )}
 
       <div className="relative w-full h-full flex items-center justify-center p-4 sm:p-16" onClick={onClose}>
-        <img src={photo.fullUrl || getPhotoFullUrl(photo.id)} alt={photo.caption ?? 'Фото'} className="max-w-full max-h-full object-contain rounded-md shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        <img src={photo.fullUrl || getPhotoFullUrl(photo.id)} alt={photo.caption ?? t('app.photoAlt')} className="max-w-full max-h-full object-contain rounded-md shadow-2xl" onClick={(e) => e.stopPropagation()} />
       </div>
     </div>
   );
@@ -953,8 +965,10 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
 
 // --- Главный компонент ---
 export default function App() {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('auth_token'));
-  const [showSettings, setShowSettings] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'light') return false;
@@ -1015,6 +1029,9 @@ export default function App() {
   ), [activeShare]);
   const currentLightboxPhoto = lightboxPhotoIndex !== null ? currentPhotos[lightboxPhotoIndex] : null;
   const currentSharedLightboxPhoto = sharedLightboxPhotoIndex !== null ? sharedPhotos[sharedLightboxPhotoIndex] : null;
+  const isLoginRoute = location.pathname === '/login';
+  const isSettingsRoute = location.pathname === '/setting';
+  const isSettingsAliasRoute = location.pathname === '/settings';
 
   // Apply dark mode class to html element
   useEffect(() => {
@@ -1134,7 +1151,7 @@ export default function App() {
             type,
             passwordRequired: true,
             accessType: 'password',
-            title: type === 'album' ? 'Альбом' : 'Фото',
+            title: type === 'album' ? t('app.album') : t('app.photo'),
             photos: [],
             photo: null
           } as any);
@@ -1185,12 +1202,14 @@ export default function App() {
   const handleLogin = async (email: string, password: string) => {
     await api.login(email, password);
     setIsAuthenticated(true);
+    navigate('/', { replace: true });
   };
 
   const handleRegister = async (email: string, password: string) => {
     await api.register(email, password);
     await api.login(email, password);
     setIsAuthenticated(true);
+    navigate('/', { replace: true });
   };
 
   const handleLogout = () => {
@@ -1199,6 +1218,7 @@ export default function App() {
     setAlbums([]);
     setPhotos([]);
     setSelectedAlbumId(null);
+    navigate('/login', { replace: true });
   };
 
   const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
@@ -1303,12 +1323,12 @@ export default function App() {
   }, []);
 
   const handleSharePhoto = useCallback((photo: DownloadablePhoto) => {
-    setShareModal({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? 'Без подписи' });
-  }, []);
+    setShareModal({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? t('app.untitled') });
+  }, [t]);
 
   const handleDeletePhotoPrompt = useCallback((photo: DownloadablePhoto) => {
-    setDeleteConfirm({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? 'это фото' });
-  }, []);
+    setDeleteConfirm({ isOpen: true, type: 'photo', id: photo.id, title: photo.caption ?? t('app.thisPhoto') });
+  }, [t]);
 
   const handleToggleSelectPhoto = useCallback((photoId: number) => {
     setSelectedPhotoIds((prev) => {
@@ -1336,9 +1356,9 @@ export default function App() {
     } catch (error: any) {
       console.error('Unlock failed:', error);
       if (error.response?.status === 401) {
-        setSharePasswordError('Неверный пароль. Попробуйте еще раз.');
+        setSharePasswordError(t('share.invalidPassword'));
       } else {
-        setSharePasswordError('Произошла ошибка. Попробуйте еще раз.');
+        setSharePasswordError(t('share.genericError'));
       }
     } finally {
       setIsUnlockingShare(false);
@@ -1346,8 +1366,7 @@ export default function App() {
   };
 
   const handleExitShare = () => {
-    const pathname = getAppBasePath(window.location.pathname);
-    window.history.pushState({}, '', pathname);
+    navigate('/', { replace: true });
     setActiveShare(null);
     setSharedLightboxPhotoIndex(null);
     setSharePasswordInput('');
@@ -1399,8 +1418,21 @@ export default function App() {
     );
   }
 
+  if (isSettingsAliasRoute) {
+    return <Navigate to="/setting" replace />;
+  }
+
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} onRegister={handleRegister} />;
+    return (
+      <>
+        <GeoLanguage />
+        <Login onLogin={handleLogin} onRegister={handleRegister} />
+      </>
+    );
+  }
+
+  if (isLoginRoute) {
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -1454,6 +1486,8 @@ export default function App() {
           }} 
         />
 
+        <GeoLanguage />
+
         {/* --- Верхняя панель навигации --- */}
         <nav className="sticky top-0 z-40 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-900 py-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-8 flex items-center justify-between">
@@ -1461,36 +1495,39 @@ export default function App() {
               <div className="w-10 h-10 bg-neutral-900 dark:bg-white rounded-full flex items-center justify-center">
                 <LayoutGrid className="w-5 h-5 text-white dark:text-neutral-900" />
               </div>
-              <h1 className="text-xl font-bold tracking-tight">Gallery.</h1>
+              <button onClick={() => navigate('/')} className="text-xl font-bold tracking-tight">
+                {t('app.name')}
+              </button>
             </div>
             
             <div className="flex items-center gap-3 sm:gap-4">
               {currentAlbum && (
                 <button onClick={() => setIsUploadPhotoModalOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all active:scale-95 shadow-sm">
-                  <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Фото</span>
+                  <Plus className="w-4 h-4" /> <span className="hidden sm:inline">{t('gallery.addPhoto')}</span>
                 </button>
               )}
+              <LanguageSwitcher compact />
               <button
-                onClick={() => setShowSettings(!showSettings)}
+                onClick={() => navigate(isSettingsRoute ? '/' : '/setting')}
                 className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
-                title="Настройки"
-                aria-label="Настройки"
+                title={t('app.settings')}
+                aria-label={t('app.settings')}
               >
                 <SettingsIcon className="w-5 h-5" />
               </button>
               <button
                 onClick={toggleTheme}
                 className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
-                title={isDarkMode ? 'Светлая тема' : 'Темная тема'}
-                aria-label={isDarkMode ? 'Переключить на светлую тему' : 'Переключить на темную тему'}
+                title={isDarkMode ? t('app.lightTheme') : t('app.darkTheme')}
+                aria-label={isDarkMode ? t('app.switchToLight') : t('app.switchToDark')}
               >
                 {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               <button
                 onClick={handleLogout}
                 className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
-                title="Выход"
-                aria-label="Выход"
+                title={t('app.logout')}
+                aria-label={t('app.logout')}
               >
                 <LogOut className="w-5 h-5" />
               </button>
@@ -1498,7 +1535,7 @@ export default function App() {
           </div>
         </nav>
 
-        {showSettings ? (
+        {isSettingsRoute ? (
           <Settings />
         ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
@@ -1532,21 +1569,21 @@ export default function App() {
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(album); }}
                         className="p-1.5 text-white dark:text-neutral-900 hover:bg-white/30 dark:hover:bg-black/20 rounded-full transition-colors"
-                        title="Скачать альбом"
+                 title={t('gallery.downloadAlbum')}
                       >
                         <Download className="w-4 h-4" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setShareModal({ isOpen: true, type: 'album', id: album.id, title: album.title }); }}
                         className="p-1.5 text-white dark:text-neutral-900 hover:bg-white/30 dark:hover:bg-black/20 rounded-full transition-colors"
-                        title="Поделиться"
+                         title={t('app.share')}
                       >
                         <Share2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, type: 'album', id: album.id, title: album.title }); }} 
                         className="p-1.5 text-red-400 dark:text-red-500 hover:bg-white/30 dark:hover:bg-black/20 rounded-full transition-colors"
-                        title="Удалить"
+                         title={t('app.delete')}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1568,17 +1605,17 @@ export default function App() {
           {!currentAlbum ? (
             <div className="py-20 text-center text-neutral-400 dark:text-neutral-600">
               <ImageIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-xl">Выберите альбом или создайте новый</p>
+              <p className="text-xl">{t('gallery.chooseOrCreate')}</p>
             </div>
           ) : currentPhotos.length === 0 ? (
             <div className="py-32 flex flex-col items-center justify-center text-center">
               <div className="w-24 h-24 rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center mb-6">
                 <ImageIcon className="w-10 h-10 text-neutral-400 dark:text-neutral-600" />
               </div>
-              <h3 className="text-2xl font-medium text-neutral-900 dark:text-white mb-2">Пустой альбом</h3>
-              <p className="text-neutral-500 mb-8 max-w-sm">Добавьте свои первые фотографии в этот альбом, чтобы начать собирать коллекцию.</p>
+              <h3 className="text-2xl font-medium text-neutral-900 dark:text-white mb-2">{t('gallery.emptyAlbum')}</h3>
+              <p className="text-neutral-500 mb-8 max-w-sm">{t('gallery.emptyAlbumText')}</p>
               <button onClick={() => setIsUploadPhotoModalOpen(true)} className="px-8 py-3.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-full font-medium hover:scale-105 transition-transform shadow-lg">
-                Загрузить фото
+                {t('gallery.uploadPhoto')}
               </button>
             </div>
           ) : (
@@ -1591,7 +1628,7 @@ export default function App() {
                     className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-full transition-colors"
                   >
                     <CheckSquare className="w-4 h-4" />
-                    Выбрать
+                    {t('gallery.select')}
                   </button>
                 ) : (
                   <div className="flex items-center gap-3">
@@ -1602,13 +1639,13 @@ export default function App() {
                       }}
                       className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
                     >
-                      Отмена
+                      {t('app.cancel')}
                     </button>
                     <button
                       onClick={selectAllPhotos}
                       className="px-4 py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
                     >
-                      Выбрать все
+                      {t('gallery.selectAll')}
                     </button>
                     {selectedPhotoIds.size > 0 && (
                       <>
@@ -1616,18 +1653,18 @@ export default function App() {
                           onClick={deselectAllPhotos}
                           className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
                         >
-                          Снять выделение
+                          {t('gallery.clearSelection')}
                         </button>
                         <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-700" />
                         <span className="text-sm text-neutral-600 dark:text-neutral-400">
-                          Выбрано: {selectedPhotoIds.size}
+                          {t('gallery.selected', { count: selectedPhotoIds.size })}
                         </span>
                         <button
                           onClick={handleBatchDeletePhotos}
                           className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-full text-sm font-medium transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
-                          Удалить ({selectedPhotoIds.size})
+                          {t('app.delete')} ({selectedPhotoIds.size})
                         </button>
                       </>
                     )}

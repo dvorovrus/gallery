@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
@@ -57,3 +57,9 @@ def root():
 @app.get("/healthz")
 def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/api/geo")
+def geo(request: Request):
+    country = request.headers.get("x-vercel-ip-country") or request.headers.get("cf-ipcountry")
+    return {"country": country.upper() if country else None}

@@ -1,6 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 import sys
 import os
 import json
@@ -22,8 +21,10 @@ if google_creds:
 
 from app.api import auth, albums, photos, share, admin
 from app.core.config import get_settings
+from app.core.database import Base, engine
 
 settings = get_settings()
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Gallery API")
 
@@ -36,21 +37,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(albums.router, prefix="/albums", tags=["albums"])
-app.include_router(photos.router, prefix="/photos", tags=["photos"])
-app.include_router(photos.router, tags=["photos"])
-app.include_router(share.router, prefix="/share", tags=["share"])
-app.include_router(admin.router, tags=["admin"])
+# Include routers for direct FastAPI paths and Vercel /api rewrites.
+app.include_router(auth.router)
+app.include_router(albums.router)
+app.include_router(photos.router)
+app.include_router(share.router)
+app.include_router(admin.router)
+app.include_router(auth.router, prefix="/api")
+app.include_router(albums.router, prefix="/api")
+app.include_router(photos.router, prefix="/api")
+app.include_router(share.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 @app.get("/")
 def read_root():
     return {"message": "Gallery API"}
 
 @app.get("/healthz")
+@app.get("/api/healthz")
 def healthz():
     return {"status": "ok"}
 
-# Handler for Vercel
-handler = Mangum(app)
+
+@app.get("/api/geo")
+def geo(request: Request):
+    country = request.headers.get("x-vercel-ip-country") or request.headers.get("cf-ipcountry")
+    return {"country": country.upper() if country else None}

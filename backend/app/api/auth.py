@@ -45,11 +45,16 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
 
+    # Check if this is the first user (make them admin)
+    user_count = db.query(User).count()
+    role = "admin" if user_count == 0 else "user"
+
     # Create new user
     hashed_password = get_password_hash(user_data.password)
     new_user = User(
         email=user_data.email,
-        password_hash=hashed_password
+        password_hash=hashed_password,
+        role=role
     )
 
     db.add(new_user)

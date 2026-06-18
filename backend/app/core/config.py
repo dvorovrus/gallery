@@ -4,6 +4,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./gallery.db"
+    TURSO_AUTH_TOKEN: str = ""
 
     # JWT
     SECRET_KEY: str = "dev-secret-key-change-this-in-production"

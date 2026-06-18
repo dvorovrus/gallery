@@ -32,6 +32,18 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/settings': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/admins': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })

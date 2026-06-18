@@ -11,6 +11,17 @@ export interface TimeRemaining {
   isExpired: boolean;
 }
 
+type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
+
+const defaultTranslate: TranslationFn = (key) => {
+  const fallbacks: Record<string, string> = {
+    'time.expired': 'Expired',
+    'time.lessThanMinute': 'Less than a minute',
+    'time.unlimited': 'Unlimited',
+  };
+  return fallbacks[key] || key;
+};
+
 /**
  * Calculate time remaining until expiration
  */
@@ -60,44 +71,44 @@ export function calculateTimeRemaining(expiresAt: string | null): TimeRemaining 
 /**
  * Format time remaining as a human-readable string
  */
-export function formatTimeRemaining(timeRemaining: TimeRemaining): string {
+export function formatTimeRemaining(timeRemaining: TimeRemaining, t: TranslationFn = defaultTranslate): string {
   if (timeRemaining.isExpired) {
-    return 'Истек срок';
+    return t('time.expired');
   }
 
   const { days, hours, minutes } = timeRemaining;
 
   if (days > 0) {
     if (hours > 0) {
-      return `${days} ${pluralizeDays(days)} ${hours} ${pluralizeHours(hours)}`;
+      return `${days} ${t('time.days', { count: days })} ${hours} ${t('time.hours', { count: hours })}`;
     }
-    return `${days} ${pluralizeDays(days)}`;
+    return `${days} ${t('time.days', { count: days })}`;
   }
 
   if (hours > 0) {
     if (minutes > 0) {
-      return `${hours} ${pluralizeHours(hours)} ${minutes} ${pluralizeMinutes(minutes)}`;
+      return `${hours} ${t('time.hours', { count: hours })} ${minutes} ${t('time.minutes', { count: minutes })}`;
     }
-    return `${hours} ${pluralizeHours(hours)}`;
+    return `${hours} ${t('time.hours', { count: hours })}`;
   }
 
   if (minutes > 0) {
-    return `${minutes} ${pluralizeMinutes(minutes)}`;
+    return `${minutes} ${t('time.minutes', { count: minutes })}`;
   }
 
-  return 'Меньше минуты';
+  return t('time.lessThanMinute');
 }
 
 /**
  * Format expiration date as a readable string
  */
-export function formatExpirationDate(expiresAt: string | null): string {
+export function formatExpirationDate(expiresAt: string | null, locale = 'en-GB', t: TranslationFn = defaultTranslate): string {
   if (!expiresAt) {
-    return 'Без ограничения';
+    return t('time.unlimited');
   }
 
   const date = new Date(expiresAt);
-  return new Intl.DateTimeFormat('ru-RU', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -151,32 +162,7 @@ export function getExpirationBgColor(timeRemaining: TimeRemaining): string {
 /**
  * Get expiration type label
  */
-export function getExpirationTypeLabel(expirationType: string): string {
-  const labels: Record<string, string> = {
-    unlimited: 'Без ограничения',
-    '7_days': '7 дней',
-    '14_days': '14 дней',
-    '30_days': '30 дней',
-  };
-
-  return labels[expirationType] || expirationType;
-}
-
-// Helper functions for Russian pluralization
-function pluralizeDays(count: number): string {
-  if (count % 10 === 1 && count % 100 !== 11) return 'день';
-  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'дня';
-  return 'дней';
-}
-
-function pluralizeHours(count: number): string {
-  if (count % 10 === 1 && count % 100 !== 11) return 'час';
-  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'часа';
-  return 'часов';
-}
-
-function pluralizeMinutes(count: number): string {
-  if (count % 10 === 1 && count % 100 !== 11) return 'минута';
-  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'минуты';
-  return 'минут';
+export function getExpirationTypeLabel(expirationType: string, t: TranslationFn = defaultTranslate): string {
+  if (expirationType === 'unlimited') return t('time.unlimited');
+  return t(`time.${expirationType}`) || expirationType;
 }

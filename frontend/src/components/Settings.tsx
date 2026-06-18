@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Upload, CheckCircle, XCircle, AlertCircle, Trash2, Users, Shield, UserX } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle, XCircle, AlertCircle, Trash2, Users, Shield, UserX } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from './LanguageSwitcher';
 import * as api from '@/services/api';
 import type { UserInfo } from '@/types';
 
 export default function Settings() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +19,6 @@ export default function Settings() {
   const [testing, setTesting] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
   
-  // Admin management states
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [activeTab, setActiveTab] = useState<'google-drive' | 'users'>('google-drive');
@@ -54,9 +58,9 @@ export default function Settings() {
 
   const handleToggleAdmin = async (userId: number, currentRole: string) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
-    const action = newRole === 'admin' ? 'promote to admin' : 'remove admin rights';
+    const action = newRole === 'admin' ? t('settings.actionMakeAdmin') : t('settings.actionRemoveAdmin');
     
-    if (!confirm(`Are you sure you want to ${action} this user?`)) {
+    if (!confirm(t('settings.confirmToggleAdmin', { action }))) {
       return;
     }
 
@@ -69,7 +73,7 @@ export default function Settings() {
   };
 
   const handleDeleteUser = async (userId: number, userEmail: string) => {
-    if (!confirm(`Are you sure you want to delete user ${userEmail}? This will also delete all their albums and photos.`)) {
+    if (!confirm(t('settings.confirmDeleteUser', { email: userEmail }))) {
       return;
     }
 
@@ -85,7 +89,7 @@ export default function Settings() {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.name.endsWith('.json')) {
-        setError('Please select a JSON file');
+        setError(t('settings.jsonOnly'));
         return;
       }
       setServiceAccountFile(file);
@@ -97,7 +101,7 @@ export default function Settings() {
     e.preventDefault();
     
     if (!folderId || !serviceAccountFile) {
-      setError('Please provide both Folder ID and service account JSON file');
+      setError(t('settings.missingFields'));
       return;
     }
 
@@ -108,7 +112,7 @@ export default function Settings() {
       await loadSettings();
       setServiceAccountFile(null);
       setTestResult(null);
-      alert('Google Drive configured successfully!');
+      alert(t('settings.saved'));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -131,7 +135,7 @@ export default function Settings() {
   };
 
   const handleRemove = async () => {
-    if (!confirm('Are you sure you want to remove Google Drive configuration?')) {
+    if (!confirm(t('settings.confirmRemoveConfig'))) {
       return;
     }
 
@@ -150,56 +154,66 @@ export default function Settings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-12">Loading settings...</div>
-        </div>
+      <div className="min-h-screen bg-white dark:bg-neutral-950 flex items-center justify-center p-6">
+        <div className="text-neutral-600 dark:text-neutral-400">{t('settings.loading')}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-600 mt-2">Configure Google Drive storage for your gallery</p>
+    <div className="min-h-screen bg-white dark:bg-neutral-950 px-4 py-6 sm:px-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8 overflow-hidden rounded-[2rem] border border-neutral-200 bg-neutral-50 p-5 dark:border-neutral-800 dark:bg-neutral-900 sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <button
+                onClick={() => navigate('/')}
+                className="mb-5 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:text-neutral-950 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {t('app.backToGallery')}
+              </button>
+              <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">{t('settings.title')}</h1>
+              <p className="mt-3 max-w-2xl text-neutral-600 dark:text-neutral-400">{t('settings.subtitle')}</p>
+            </div>
+            <LanguageSwitcher />
+          </div>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-3xl flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-red-800 font-medium">Error</p>
-              <p className="text-red-600 text-sm mt-1">{error}</p>
+              <p className="text-red-800 dark:text-red-300 font-medium">{t('app.error')}</p>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-1">{error}</p>
             </div>
           </div>
         )}
 
         {/* Tabs */}
-        <div className="mb-6 border-b border-gray-200">
+        <div className="mb-6 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex gap-4">
             <button
               onClick={() => setActiveTab('google-drive')}
               className={`pb-3 px-1 border-b-2 font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'google-drive'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-neutral-900 dark:border-white text-neutral-900 dark:text-white'
+                  : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
               }`}
             >
               <Upload className="w-4 h-4" />
-              Google Drive
+              {t('settings.storage')}
             </button>
             <button
               onClick={() => setActiveTab('users')}
               className={`pb-3 px-1 border-b-2 font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'users'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-neutral-900 dark:border-white text-neutral-900 dark:text-white'
+                  : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
               }`}
             >
               <Users className="w-4 h-4" />
-              Manage Admins
+              {t('settings.admins')}
             </button>
           </div>
         </div>
@@ -207,24 +221,24 @@ export default function Settings() {
         {activeTab === 'google-drive' && (
         <>
         {/* Status Card */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Google Drive Status</h2>
+        <div className="bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 mb-6">
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-white mb-4">{t('settings.googleStatus')}</h2>
           
           <div className="flex items-center gap-3 mb-4">
             {settings?.google_drive_configured ? (
               <>
                 <CheckCircle className="w-6 h-6 text-green-500" />
                 <div>
-                  <p className="font-medium text-green-700">Connected</p>
-                  <p className="text-sm text-gray-600">Folder ID: {settings.google_drive_folder_id}</p>
+                  <p className="font-medium text-green-700 dark:text-green-400">{t('settings.connected')}</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Folder ID: {settings.google_drive_folder_id}</p>
                 </div>
               </>
             ) : (
               <>
                 <AlertCircle className="w-6 h-6 text-orange-500" />
                 <div>
-                  <p className="font-medium text-orange-700">Not Configured</p>
-                  <p className="text-sm text-gray-600">Please configure Google Drive below</p>
+                  <p className="font-medium text-orange-700 dark:text-orange-400">{t('settings.notConfigured')}</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">{t('settings.configureBelow')}</p>
                 </div>
               </>
             )}
@@ -235,28 +249,28 @@ export default function Settings() {
               <button
                 onClick={handleTest}
                 disabled={testing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-2xl font-medium disabled:opacity-50 transition-all"
               >
-                {testing ? 'Testing...' : 'Test Connection'}
+                {testing ? t('settings.testing') : t('settings.testConnection')}
               </button>
               <button
                 onClick={handleRemove}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+                className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-medium flex items-center gap-2 transition-all"
               >
                 <Trash2 className="w-4 h-4" />
-                Remove Configuration
+                {t('settings.removeConfig')}
               </button>
             </div>
           )}
 
           {testResult && (
-            <div className={`mt-4 p-4 rounded-lg ${testResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-              <p className={`font-medium ${testResult.success ? 'text-green-800' : 'text-red-800'}`}>
+            <div className={`mt-4 p-4 rounded-2xl ${testResult.success ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'}`}>
+              <p className={`font-medium ${testResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
                 {testResult.message}
               </p>
               {testResult.folder_name && (
-                <p className="text-sm text-gray-600 mt-2">
-                  Folder: {testResult.folder_name} (Can edit: {testResult.can_edit ? 'Yes' : 'No'})
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
+                  {t('settings.folder', { name: testResult.folder_name, canEdit: testResult.can_edit ? t('settings.yes') : t('settings.no') })}
                 </p>
               )}
             </div>
@@ -265,38 +279,38 @@ export default function Settings() {
 
         {/* Instructions */}
         {showInstructions && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">Setup Instructions</h3>
-            <div className="space-y-3 text-sm text-blue-800">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-3xl p-6 mb-6">
+            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-3">{t('settings.instructionsTitle')}</h3>
+            <div className="space-y-3 text-sm text-blue-800 dark:text-blue-300">
               <div>
-                <p className="font-medium">1. Create a Google Cloud Service Account</p>
+                <p className="font-medium">{t('settings.serviceStep')}</p>
                 <ul className="list-disc ml-6 mt-1 space-y-1">
-                  <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a></li>
-                  <li>Create a new project or select existing</li>
-                  <li>Enable Google Drive API</li>
-                  <li>Go to IAM & Admin → Service Accounts → Create Service Account</li>
-                  <li>Create and download JSON key</li>
+                  <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="underline">{t('settings.service1')}</a></li>
+                  <li>{t('settings.service2')}</li>
+                  <li>{t('settings.service3')}</li>
+                  <li>{t('settings.service4')}</li>
+                  <li>{t('settings.service5')}</li>
                 </ul>
               </div>
               <div>
-                <p className="font-medium">2. Create Google Drive Folder</p>
+                <p className="font-medium">{t('settings.folderStep')}</p>
                 <ul className="list-disc ml-6 mt-1 space-y-1">
-                  <li>Create a folder in Google Drive</li>
-                  <li>Share the folder with the service account email (found in JSON: client_email)</li>
-                  <li>Give "Editor" permissions</li>
-                  <li>Copy the Folder ID from the URL: drive.google.com/drive/folders/FOLDER_ID</li>
+                  <li>{t('settings.folder1')}</li>
+                  <li>{t('settings.folder2')}</li>
+                  <li>{t('settings.folder3')}</li>
+                  <li>{t('settings.folder4')}</li>
                 </ul>
               </div>
               <div>
-                <p className="font-medium">3. Configure Below</p>
-                <p className="ml-6 mt-1">Upload the service account JSON file and paste the Folder ID</p>
+                <p className="font-medium">{t('settings.setupStep')}</p>
+                <p className="ml-6 mt-1">{t('settings.setupText')}</p>
               </div>
             </div>
             <button
               onClick={() => setShowInstructions(false)}
-              className="mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
+              className="mt-4 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium"
             >
-              Hide Instructions
+              {t('settings.hideInstructions')}
             </button>
           </div>
         )}
@@ -304,70 +318,62 @@ export default function Settings() {
         {!showInstructions && !settings?.google_drive_configured && (
           <button
             onClick={() => setShowInstructions(true)}
-            className="mb-6 text-blue-600 hover:text-blue-700 text-sm font-medium"
+            className="mb-6 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white text-sm font-medium"
           >
-            Show Setup Instructions
+            {t('settings.showInstructions')}
           </button>
         )}
 
         {/* Configuration Form */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {settings?.google_drive_configured ? 'Update Configuration' : 'Configure Google Drive'}
+        <div className="bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-white mb-4">
+             {settings?.google_drive_configured ? t('settings.updateConfig') : t('settings.configureDrive')}
           </h2>
           
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="folderId" className="block text-sm font-medium text-gray-700 mb-1">
-                Google Drive Folder ID
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Folder ID
               </label>
               <input
                 type="text"
-                id="folderId"
                 value={folderId}
                 onChange={(e) => setFolderId(e.target.value)}
-                placeholder="e.g., 1a2b3c4d5e6f7g8h9i"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="1A2B3C4D5E6F..."
+                className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl focus:border-neutral-900 dark:focus:border-white outline-none transition-all"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Found in the folder URL: drive.google.com/drive/folders/FOLDER_ID
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                {t('settings.folderHint')}
               </p>
             </div>
 
             <div>
-              <label htmlFor="serviceAccount" className="block text-sm font-medium text-gray-700 mb-1">
-                Service Account JSON File
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                {t('settings.serviceJson')}
               </label>
-              <div className="flex items-center gap-3">
-                <label className="flex-1 cursor-pointer">
-                  <div className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 transition-colors flex items-center justify-center gap-2 bg-gray-50">
-                    <Upload className="w-5 h-5 text-gray-400" />
-                    <span className="text-sm text-gray-600">
-                      {serviceAccountFile ? serviceAccountFile.name : 'Choose file...'}
-                    </span>
-                  </div>
-                  <input
-                    type="file"
-                    id="serviceAccount"
-                    accept=".json"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    required={!settings?.google_drive_configured}
-                  />
-                </label>
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileChange}
+                  className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-neutral-900 hover:file:bg-neutral-800 dark:hover:file:bg-neutral-200 transition-all cursor-pointer"
+                  required={!settings?.google_drive_configured}
+                />
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Upload the JSON key file from Google Cloud Console
-              </p>
+              {serviceAccountFile && (
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                  {t('settings.fileSelected', { name: serviceAccountFile.name })}
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={uploading || !folderId || (!serviceAccountFile && !settings?.google_drive_configured)}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+              disabled={uploading}
+              className="w-full py-3.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-2xl font-medium disabled:opacity-50 transition-all"
             >
-              {uploading ? 'Configuring...' : 'Save Configuration'}
+              {uploading ? t('settings.saving') : t('settings.saveConfig')}
             </button>
           </form>
         </div>
@@ -375,70 +381,56 @@ export default function Settings() {
         )}
 
         {activeTab === 'users' && (
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">User Management</h2>
-          <p className="text-gray-600 text-sm mb-6">
-            Manage user roles and permissions. Admins can access settings and manage other users.
-          </p>
-
-          {loadingUsers ? (
-            <div className="text-center py-8 text-gray-500">Loading users...</div>
-          ) : (
-            <div className="space-y-3">
-              {users.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
-                >
-                  <div className="flex-1">
+          <div className="bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
+            <h2 className="text-xl font-semibold text-neutral-900 dark:text-white mb-4">{t('settings.usersTitle')}</h2>
+            
+            {loadingUsers ? (
+              <p className="text-neutral-600 dark:text-neutral-400">{t('app.loading')}</p>
+            ) : (
+              <div className="space-y-3">
+                {users.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-4 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{user.email}</p>
-                        <p className="text-xs text-gray-500">
-                          Registered: {new Date(user.created_at).toLocaleDateString()}
+                      {user.role === 'admin' ? (
+                        <Shield className="w-5 h-5 text-blue-500" />
+                      ) : (
+                        <Users className="w-5 h-5 text-neutral-400" />
+                      )}
+                      <div>
+                        <p className="font-medium text-neutral-900 dark:text-white">{user.email}</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                          {user.role === 'admin' ? t('settings.admin') : t('settings.user')}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {user.role === 'admin' && (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                            <Shield className="w-3 h-3" />
-                            Admin
-                          </span>
-                        )}
-                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleToggleAdmin(user.id, user.role)}
+                        className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                          user.role === 'admin'
+                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50'
+                            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                        }`}
+                      >
+                        {user.role === 'admin' ? t('settings.removeRights') : t('settings.makeAdmin')}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteUser(user.id, user.email)}
+                        className="px-3 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl text-sm font-medium hover:bg-red-200 dark:hover:bg-red-900/50 transition-all flex items-center gap-1"
+                      >
+                        <UserX className="w-4 h-4" />
+                        {t('settings.deleteUser')}
+                      </button>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2 ml-4">
-                    <button
-                      onClick={() => handleToggleAdmin(user.id, user.role)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        user.role === 'admin'
-                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                    >
-                      {user.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(user.id, user.email)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Delete user"
-                    >
-                      <UserX className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              
-              {users.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No users found
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

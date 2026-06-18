@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 import sys
@@ -51,6 +51,12 @@ def read_root():
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+@app.get("/api/geo")
+def geo(request: Request):
+    country = request.headers.get("x-vercel-ip-country") or request.headers.get("cf-ipcountry")
+    return {"country": country.upper() if country else None}
 
 # Handler for Vercel
 handler = Mangum(app)
