@@ -78,10 +78,16 @@ class GoogleDriveService:
         if self._initialized:
             return
         
-        self.credentials = get_credentials_from_db()
-        self.service = build('drive', 'v3', credentials=self.credentials)
-        self.root_folder_id = get_folder_id_from_db()
-        self._initialized = True
+        try:
+            self.credentials = get_credentials_from_db()
+            self.service = build('drive', 'v3', credentials=self.credentials)
+            self.root_folder_id = get_folder_id_from_db()
+            self._initialized = True
+        except Exception as e:
+            print(f"Failed to initialize Google Drive service: {str(e)}")
+            raise Exception(
+                "Google Drive is not configured. Please go to Settings page and configure Google Drive credentials."
+            ) from e
 
     def create_user_folder(self, user_id: int) -> str:
         """Создать папку пользователя в корневой папке"""

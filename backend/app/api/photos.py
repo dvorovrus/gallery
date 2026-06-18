@@ -106,8 +106,20 @@ async def upload_photos(
     uploaded_photos = []
 
     # Create user and album folders
-    user_folder_id = storage_service.create_user_folder(current_user.id)
-    album_folder_id = storage_service.create_album_folder(user_folder_id, album_id)
+    try:
+        user_folder_id = storage_service.create_user_folder(current_user.id)
+        album_folder_id = storage_service.create_album_folder(user_folder_id, album_id)
+    except Exception as e:
+        error_msg = str(e)
+        if "not configured" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Google Drive is not configured. Please contact administrator to configure storage in Settings."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize storage: {error_msg}"
+        )
 
     for file in files:
         # Save file temporarily
