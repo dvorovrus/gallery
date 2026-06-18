@@ -3,9 +3,10 @@ import type { ChangeEvent, ReactNode } from 'react';
 import {
   Plus, Trash2, X,
   ChevronLeft, ChevronRight, Share2, Lock, Copy, CheckCircle,
-  Sun, Moon, Image as ImageIcon, Camera, LayoutGrid, CheckSquare, Square, LogOut, Download, Clock
+  Sun, Moon, Image as ImageIcon, Camera, LayoutGrid, CheckSquare, Square, LogOut, Download, Clock, Settings as SettingsIcon
 } from 'lucide-react';
 import Login from './components/Login';
+import Settings from './components/Settings';
 import * as api from './services/api';
 import { shareAPI } from './api/client';
 import type { Album, Photo } from './types';
@@ -953,6 +954,7 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
 // --- Главный компонент ---
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('auth_token'));
+  const [showSettings, setShowSettings] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'light') return false;
@@ -1469,6 +1471,14 @@ export default function App() {
                 </button>
               )}
               <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
+                title="Настройки"
+                aria-label="Настройки"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
+              <button
                 onClick={toggleTheme}
                 className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors"
                 title={isDarkMode ? 'Светлая тема' : 'Темная тема'}
@@ -1488,6 +1498,9 @@ export default function App() {
           </div>
         </nav>
 
+        {showSettings ? (
+          <Settings />
+        ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
           
           {/* --- Навигация по альбомам (Чипсы - исправленные) --- */}
@@ -1650,6 +1663,7 @@ export default function App() {
             </>
           )}
         </main>
+        )}
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `

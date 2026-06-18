@@ -5,20 +5,87 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from app.core.config import get_settings
 from typing import Optional
 import io
+import os
 
 settings = get_settings()
 
-class GoogleDriveService:
-    def __init__(self):
-        credentials = service_account.Credentials.from_service_account_file(
+def get_credentials_from_db():
+    """Получить credentials из БД или из файла"""
+    try:
+        from app.core.database import SessionLocal
+        from app.models.models import Settings as SettingsModel
+        
+        db = SessionLocal()
+        try:
+            credentials_setting = db.query(SettingsModel).filter(
+                SettingsModel.key == "google_service_account_json"
+            ).first()
+            
+            if credentials_setting and credentials_setting.value:
+                credentials_data = json.loads(credentials_setting.value)
+                return service_account.Credentials.from_service_account_info(
+                    credentials_data,
+                    scopes=['https://www.googleapis.com/auth/drive']
+                )
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Could not load credentials from DB: {e}")
+    
+    # Fallback to file-based credentials
+    if settings.GOOGLE_CREDENTIALS_PATH and os.path.exists(settings.GOOGLE_CREDENTIALS_PATH):
+        return service_account.Credentials.from_service_account_file(
             settings.GOOGLE_CREDENTIALS_PATH,
             scopes=['https://www.googleapis.com/auth/drive']
         )
-        self.service = build('drive', 'v3', credentials=credentials)
-        self.root_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
+    
+    raise Exception("Google Drive credentials not configured")
+
+def get_folder_id_from_db():
+    """Получить folder ID из БД или из настроек"""
+    try:
+        from app.core.database import SessionLocal
+        from app.models.models import Settings as SettingsModel
+        
+        db = SessionLocal()
+        try:
+            folder_setting = db.query(SettingsModel).filter(
+                SettingsModel.key == "google_drive_folder_id"
+            ).first()
+            
+            if folder_setting and folder_setting.value:
+                return folder_setting.value
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Could not load folder_id from DB: {e}")
+    
+    # Fallback to settings
+    if settings.GOOGLE_DRIVE_FOLDER_ID:
+        return settings.GOOGLE_DRIVE_FOLDER_ID
+    
+    raise Exception("Google Drive folder ID not configured")
+
+class GoogleDriveService:
+    def __init__(self):
+        self.credentials = None
+        self.service = None
+        self.root_folder_id = None
+        self._initialized = False
+    
+    def _ensure_initialized(self):
+        """Lazy initialization of Google Drive service"""
+        if self._initialized:
+            return
+        
+        self.credentials = get_credentials_from_db()
+        self.service = build('drive', 'v3', credentials=self.credentials)
+        self.root_folder_id = get_folder_id_from_db()
+        self._initialized = True
 
     def create_user_folder(self, user_id: int) -> str:
         """Создать папку пользователя в корневой папке"""
+        self._ensure_initialized()
         folder_name = f'user_{user_id}'
         query = f"name='{folder_name}' and '{self.root_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = self.service.files().list(
@@ -45,6 +112,7 @@ class GoogleDriveService:
 
     def create_album_folder(self, user_folder_id: str, album_id: int) -> str:
         """Создать папку альбома в папке пользователя"""
+        self._ensure_initialized()
         folder_name = f'album_{album_id}'
         query = f"name='{folder_name}' and '{user_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = self.service.files().list(
@@ -71,6 +139,7 @@ class GoogleDriveService:
 
     def upload_file(self, file_path: str, filename: str, parent_folder_id: str) -> str:
         """Загрузить файл в папку альбома"""
+        self._ensure_initialized()
         file_metadata = {
             'name': filename,
             'parents': [parent_folder_id]
@@ -86,6 +155,7 @@ class GoogleDriveService:
 
     def get_file(self, file_id: str) -> bytes:
         """Получить файл из Google Drive"""
+        self._ensure_initialized()
         request = self.service.files().get_media(fileId=file_id, supportsAllDrives=True)
         file_buffer = io.BytesIO()
         downloader = MediaIoBaseDownload(file_buffer, request)
@@ -99,14 +169,17 @@ class GoogleDriveService:
 
     def delete_file(self, file_id: str):
         """Удалить файл из Google Drive"""
+        self._ensure_initialized()
         self.service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
 
     def delete_folder(self, folder_id: str):
         """Удалить папку из Google Drive"""
+        self._ensure_initialized()
         self.service.files().delete(fileId=folder_id, supportsAllDrives=True).execute()
 
     def get_album_folder_id(self, user_folder_id: str, album_id: int) -> str:
         """Получить ID папки альбома"""
+        self._ensure_initialized()
         folder_name = f'album_{album_id}'
         query = f"name='{folder_name}' and '{user_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = self.service.files().list(q=query, fields='files(id)', supportsAllDrives=True).execute()

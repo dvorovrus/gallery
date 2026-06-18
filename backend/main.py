@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 from app.core.database import Base, engine
-from app.api import auth, albums, photos, share
+from app.api import auth, albums, photos, share, admin
 from app.services.scheduler import album_scheduler
 
 settings = get_settings()
@@ -43,6 +43,7 @@ app.include_router(auth.router)
 app.include_router(albums.router)
 app.include_router(photos.router)
 app.include_router(share.router)
+app.include_router(admin.router)
 
 @app.get("/")
 def root():

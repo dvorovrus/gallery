@@ -16,6 +16,11 @@ backend/oauth_credentials.json
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Vercel
+.vercel
+.env*.local
+service-account.json
+
 # Node
 node_modules/
 dist/

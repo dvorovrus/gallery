@@ -48,3 +48,16 @@ export interface ApiErrorPayload {
     request_id?: string;
   };
 }
+
+export interface GoogleDriveSettings {
+  google_drive_configured: boolean;
+  google_drive_folder_id: string | null;
+}
+
+export interface GoogleDriveTestResponse {
+  success: boolean;
+  message: string;
+  folder_name?: string;
+  folder_id?: string;
+  can_edit?: boolean;
+}

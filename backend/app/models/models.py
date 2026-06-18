@@ -57,3 +57,11 @@ class Share(Base):
 
     album = relationship("Album", back_populates="shares")
     photo = relationship("Photo", back_populates="shares")
+
+class Settings(Base):
+    __tablename__ = "settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, nullable=False, index=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

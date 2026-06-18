@@ -1,4 +1,4 @@
-import type { Album, AuthTokens, Photo, User } from '@/types';
+import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -180,4 +180,44 @@ export const downloadAlbum = async (albumId: number, fallbackName: string) => {
   const blob = await response.blob();
   const matchedName = getFilenameFromDisposition(response.headers.get('Content-Disposition'));
   triggerBlobDownload(blob, matchedName || fallbackName);
+};
+
+// Settings
+export const getSettings = async () => {
+  return requestJson<GoogleDriveSettings>('/settings', {
+    headers: getHeaders(),
+  });
+};
+
+export const configureGoogleDrive = async (folderId: string, serviceAccountFile: File) => {
+  const formData = new FormData();
+  formData.append('folder_id', folderId);
+  formData.append('service_account_file', serviceAccountFile);
+
+  const response = await fetch(`${API_BASE_URL}/settings/google-drive`, {
+    method: 'POST',
+    headers: getAuthOnlyHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to configure Google Drive');
+  }
+
+  return response.json();
+};
+
+export const testGoogleDriveConnection = async () => {
+  return requestJson<GoogleDriveTestResponse>('/settings/google-drive/test', {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+};
+
+export const removeGoogleDriveConfig = async () => {
+  return requestVoid('/settings/google-drive', {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
 };

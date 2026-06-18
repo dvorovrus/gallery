@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
 
     # Storage
-    STORAGE_TYPE: str = "local"  # "local", "google_drive" or "google_drive_oauth"
+    STORAGE_TYPE: str = "google_drive"  # "local", "google_drive" or "google_drive_oauth"
 
     # Google Drive (optional, только если STORAGE_TYPE="google_drive" или "google_drive_oauth")
     GOOGLE_CREDENTIALS_PATH: str = ""
