@@ -25,18 +25,45 @@ const getAuthOnlyHeaders = () => ({
 
 const requestJson = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.detail || message;
+    } catch {
+      // Keep the status-based fallback when the server returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
   return response.json() as Promise<T>;
 };
 
 const requestVoid = async (path: string, init: RequestInit = {}): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.detail || message;
+    } catch {
+      // Keep the status-based fallback when the server returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
 };
 
 const requestBlob = async (path: string, init: RequestInit = {}): Promise<Response> => {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`;
+    try {
+      const error = await response.json();
+      message = error.detail || message;
+    } catch {
+      // Keep the status-based fallback when the server returns a non-JSON error.
+    }
+    throw new Error(message);
+  }
   return response;
 };
 

@@ -22,9 +22,23 @@ if google_creds:
 from app.api import auth, albums, photos, share, admin
 from app.core.config import get_settings
 from app.core.database import Base, engine
+from sqlalchemy import inspect, text
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_schema_updates():
+    inspector = inspect(engine)
+
+    if "photos" in inspector.get_table_names():
+        photo_columns = {column["name"] for column in inspector.get_columns("photos")}
+        if "thumbnail_file_id" not in photo_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE photos ADD COLUMN thumbnail_file_id VARCHAR"))
+
+
+ensure_schema_updates()
 
 app = FastAPI(title="Gallery API")
 
