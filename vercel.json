@@ -1,9 +1,8 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm install",
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "echo 'Skip default install'",
   "framework": null,
-  "cwd": "frontend",
   "git": {
     "deploymentEnabled": {
       "main": true
