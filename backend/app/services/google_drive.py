@@ -167,6 +167,10 @@ class GoogleDriveService:
             print(f"Error uploading file to Google Drive: {str(e)}")
             import traceback
             traceback.print_exc()
+            if "storageQuotaExceeded" in str(e) or "Service Accounts do not have storage quota" in str(e):
+                raise Exception(
+                    "Google Drive folder must be inside a Shared Drive. Service Accounts cannot upload files to a regular My Drive folder because they have no storage quota."
+                ) from e
             raise
 
     def get_file(self, file_id: str) -> bytes:

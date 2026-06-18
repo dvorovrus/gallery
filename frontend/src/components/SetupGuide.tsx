@@ -57,8 +57,8 @@ export default function SetupGuide() {
             <li><a href="#step6" className="hover:text-neutral-900 dark:hover:text-white">Step 6: Enable Google Drive API</a></li>
             <li><a href="#step7" className="hover:text-neutral-900 dark:hover:text-white">Step 7: Create Service Account</a></li>
             <li><a href="#step8" className="hover:text-neutral-900 dark:hover:text-white">Step 8: Create and Download JSON Key</a></li>
-            <li><a href="#step9" className="hover:text-neutral-900 dark:hover:text-white">Step 9: Create Google Drive Folder</a></li>
-            <li><a href="#step10" className="hover:text-neutral-900 dark:hover:text-white">Step 10: Share Folder with Service Account</a></li>
+            <li><a href="#step9" className="hover:text-neutral-900 dark:hover:text-white">Step 9: Create Shared Drive Folder</a></li>
+            <li><a href="#step10" className="hover:text-neutral-900 dark:hover:text-white">Step 10: Add Service Account to Shared Drive</a></li>
             <li><a href="#step11" className="hover:text-neutral-900 dark:hover:text-white">Step 11: Get Folder ID</a></li>
             <li><a href="#step12" className="hover:text-neutral-900 dark:hover:text-white">Step 12: Configure Your Application</a></li>
           </ol>
@@ -227,7 +227,12 @@ export default function SetupGuide() {
 
         {/* Step 9 */}
         <section id="step9" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 9: Create Google Drive Folder</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 9: Create Shared Drive Folder</h2>
+          <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-2xl">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">
+              <strong>Important:</strong> Do not use a regular My Drive folder. Service Accounts have no storage quota and can upload files only to a Shared Drive.
+            </p>
+          </div>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
             <li>
               Go to{' '}
@@ -241,6 +246,9 @@ export default function SetupGuide() {
                 <ExternalLink className="w-3 h-3" />
               </a>
             </li>
+            <li>Open <strong>"Shared drives"</strong> in the left sidebar</li>
+            <li>Click <strong>"New"</strong> and create a Shared Drive (for example, "Gallery")</li>
+            <li>Open the new Shared Drive</li>
             <li>Click <strong>"New"</strong> button</li>
             <li>Select <strong>"New folder"</strong></li>
             <li>Enter a folder name (e.g., "Gallery Photos")</li>
@@ -250,10 +258,10 @@ export default function SetupGuide() {
 
         {/* Step 10 */}
         <section id="step10" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 10: Share Folder with Service Account</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 10: Add Service Account to Shared Drive</h2>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
-            <li>Click on the folder name dropdown at the top</li>
-            <li>Select <strong>"Share"</strong></li>
+            <li>Open your Shared Drive</li>
+            <li>Click <strong>"Manage members"</strong></li>
             <li>In the text field, paste the Service Account email address (from the JSON file, <code className="bg-neutral-200 dark:bg-neutral-800 px-1 rounded">client_email</code> field)</li>
             <li>
               Example: <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded text-xs">gallery-drive-access@project-name.iam.gserviceaccount.com</code>
@@ -265,7 +273,7 @@ export default function SetupGuide() {
                 {copiedEmail ? 'Copied!' : 'Copy example'}
               </button>
             </li>
-            <li>Select <strong>"Editor"</strong> permission level</li>
+            <li>Select <strong>"Content manager"</strong> or <strong>"Manager"</strong> permission level</li>
             <li>Click <strong>"Send"</strong> or <strong>"Share"</strong></li>
             <li>If prompted, click <strong>"Share anyway"</strong></li>
             <li>Click <strong>"Done"</strong></li>
@@ -337,7 +345,7 @@ export default function SetupGuide() {
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>Created Google Drive folder and shared it with Service Account</span>
+              <span>Created a Shared Drive folder and added the Service Account as a member</span>
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />

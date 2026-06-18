@@ -168,16 +168,27 @@ def test_google_drive_connection(
         # Проверяем доступ к папке
         folder = service.files().get(
             fileId=folder_id_setting.value,
-            fields='id,name,capabilities',
+            fields='id,name,capabilities,driveId',
             supportsAllDrives=True
         ).execute()
+        is_shared_drive = bool(folder.get("driveId"))
+        can_edit = folder.get("capabilities", {}).get("canAddChildren", False)
+
+        if not is_shared_drive:
+            return {
+                "success": False,
+                "message": "Folder is in My Drive. Service Accounts cannot upload there because they have no storage quota. Create a Shared Drive and use a folder from it.",
+                "folder_name": folder.get("name"),
+                "folder_id": folder.get("id"),
+                "can_edit": can_edit
+            }
         
         return {
             "success": True,
             "message": "Successfully connected to Google Drive",
             "folder_name": folder.get("name"),
             "folder_id": folder.get("id"),
-            "can_edit": folder.get("capabilities", {}).get("canAddChildren", False)
+            "can_edit": can_edit
         }
         
     except Exception as e:
