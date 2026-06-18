@@ -106,6 +106,7 @@
     "folder": "Папка: {{name}} (можна редагувати: {{canEdit}})",
     "yes": "Так",
     "no": "Ні",
+    "viewFullGuide": "Переглянути повну інструкцію",
     "instructionsTitle": "Інструкція з налаштування",
     "serviceStep": "1. Створіть Service Account у Google Cloud",
     "service1": "Перейдіть у Google Cloud Console",

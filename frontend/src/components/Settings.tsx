@@ -17,7 +17,6 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
-  const [showInstructions, setShowInstructions] = useState(false);
   
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -36,7 +35,6 @@ export default function Settings() {
       if (data.google_drive_folder_id) {
         setFolderId(data.google_drive_folder_id);
       }
-      setShowInstructions(!data.google_drive_configured);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -277,51 +275,18 @@ export default function Settings() {
           )}
         </div>
 
-        {/* Instructions */}
-        {showInstructions && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-3xl p-6 mb-6">
-            <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-3">{t('settings.instructionsTitle')}</h3>
-            <div className="space-y-3 text-sm text-blue-800 dark:text-blue-300">
-              <div>
-                <p className="font-medium">{t('settings.serviceStep')}</p>
-                <ul className="list-disc ml-6 mt-1 space-y-1">
-                  <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="underline">{t('settings.service1')}</a></li>
-                  <li>{t('settings.service2')}</li>
-                  <li>{t('settings.service3')}</li>
-                  <li>{t('settings.service4')}</li>
-                  <li>{t('settings.service5')}</li>
-                </ul>
-              </div>
-              <div>
-                <p className="font-medium">{t('settings.folderStep')}</p>
-                <ul className="list-disc ml-6 mt-1 space-y-1">
-                  <li>{t('settings.folder1')}</li>
-                  <li>{t('settings.folder2')}</li>
-                  <li>{t('settings.folder3')}</li>
-                  <li>{t('settings.folder4')}</li>
-                </ul>
-              </div>
-              <div>
-                <p className="font-medium">{t('settings.setupStep')}</p>
-                <p className="ml-6 mt-1">{t('settings.setupText')}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowInstructions(false)}
-              className="mt-4 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium"
+        {/* Instructions Link */}
+        {!settings?.google_drive_configured && (
+          <div className="mb-6">
+            <a
+              href="/setup-guide"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium underline"
             >
-              {t('settings.hideInstructions')}
-            </button>
+              {t('settings.viewFullGuide')}
+            </a>
           </div>
-        )}
-
-        {!showInstructions && !settings?.google_drive_configured && (
-          <button
-            onClick={() => setShowInstructions(true)}
-            className="mb-6 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white text-sm font-medium"
-          >
-            {t('settings.showInstructions')}
-          </button>
         )}
 
         {/* Configuration Form */}

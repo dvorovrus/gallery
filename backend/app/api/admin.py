@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from pydantic import BaseModel
@@ -46,7 +46,7 @@ def get_settings_status(current_user: User = Depends(require_admin), db: Session
 
 @router.post("/settings/google-drive")
 async def configure_google_drive(
-    folder_id: str,
+    folder_id: str = Form(...),
     service_account_file: UploadFile = File(...),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
