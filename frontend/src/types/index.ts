@@ -69,3 +69,13 @@ export interface UserInfo {
   role: string;
   created_at: string;
 }
+
+export interface SyncResult {
+  success: boolean;
+  mode?: 'initial_full' | 'incremental' | 'file_exists' | 'error';
+  scanned?: number;
+  removed_photos?: number;
+  removed_albums?: number;
+  cleared_thumbnails?: number;
+  error?: string;
+}

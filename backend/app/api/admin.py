@@ -436,3 +436,19 @@ def delete_user(
         "success": True,
         "message": f"User {user.email} deleted successfully"
     }
+
+
+@router.post("/sync")
+def sync_storage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Сверить состояние хранилища (Google Drive) с БД и удалить записи,
+    ссылающиеся на удалённые файлы/альбомы. Доступна любому аутентифицированному
+    пользователю: сверка глобальная (токен Drive Changes общий), удаляются только
+    уже осиротевшие записи, возвращаются лишь счётчики.
+    """
+    from app.services.sync import sync_drive_to_db
+    stats = sync_drive_to_db(db)
+    return {"success": True, **stats}

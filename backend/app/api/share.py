@@ -291,6 +291,21 @@ def download_shared_photo(
         }
         return StreamingResponse(io.BytesIO(file_content), media_type=media_type, headers=headers)
     except Exception as e:
+        # Самоисцеление: файл пропал на хранилище — убираем фото из БД
+        msg = str(e)
+        if any(s in msg for s in ("404", "File not found", "fileId")):
+            try:
+                print(f"[self-heal] shared photo {photo.id} file gone, removing DB row")
+                db.query(Share).filter(Share.photo_id == photo.id).delete(synchronize_session=False)
+                db.delete(photo)
+                db.commit()
+            except Exception as purge_err:
+                print(f"[self-heal] failed to purge shared photo {photo.id}: {purge_err}")
+                db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Photo no longer exists in storage"
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to download photo: {str(e)}"

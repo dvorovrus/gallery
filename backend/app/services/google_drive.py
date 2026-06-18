@@ -256,4 +256,88 @@ class GoogleDriveService:
         items = results.get('files', [])
         return items[0]['id'] if items else None
 
+    def file_exists(self, file_id: str) -> bool:
+        """Проверить существование файла (не в корзине) на Drive"""
+        self._ensure_initialized()
+        try:
+            meta = self.service.files().get(
+                fileId=file_id,
+                fields='id,trashed',
+                supportsAllDrives=True
+            ).execute()
+            return not meta.get('trashed', False)
+        except Exception as e:
+            msg = str(e)
+            # 404 / not found → файл удалён
+            if '404' in msg or 'File not found' in msg or 'fileId' in msg:
+                return False
+            raise
+
+    def list_descendants(self, folder_id: str) -> set:
+        """
+        Рекурсивно собрать множество ID всех файлов/папок внутри folder_id.
+        Используется для первичной полной сверки (один обход вместо N проверок).
+        """
+        self._ensure_initialized()
+        all_ids = set()
+        page_token = None
+        while True:
+            query = f"'{folder_id}' in parents and trashed=false"
+            results = self.service.files().list(
+                q=query,
+                fields='nextPageToken, files(id, name, mimeType)',
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageToken=page_token,
+                pageSize=1000
+            ).execute()
+            for item in results.get('files', []):
+                all_ids.add(item['id'])
+                # Рекурсивно внутрь подпапок
+                if item.get('mimeType') == 'application/vnd.google-apps.folder':
+                    all_ids.update(self.list_descendants(item['id']))
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+        return all_ids
+
+    def get_start_page_token(self) -> str:
+        """Текущий токен состояния Drive (точка отсчёта для инкрементальной сверки)"""
+        self._ensure_initialized()
+        resp = self.service.changes().getStartPageToken(supportsAllDrives=True).execute()
+        return resp.get('startPageToken')
+
+    def list_changes(self, page_token: str) -> dict:
+        """
+        Получить изменения с момента page_token.
+        Возвращает {
+            'changes': [{'fileId': str, 'removed': bool, 'trashed': bool, 'is_folder': bool}],
+            'new_start_page_token': str | None,  # присутствует на последней странице
+            'next_page_token': str | None         # присутствует, если есть ещё страницы
+        }
+        """
+        self._ensure_initialized()
+        resp = self.service.changes().list(
+            pageToken=page_token,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            fields='nextPageToken,newStartPageToken,changes(fileId,removed,file(id,mimeType,trashed))'
+        ).execute()
+
+        changes = []
+        for ch in resp.get('changes', []):
+            f = ch.get('file') or {}
+            changes.append({
+                'fileId': ch.get('fileId'),
+                'removed': bool(ch.get('removed', False)),
+                'trashed': bool(f.get('trashed', False)),
+                'is_folder': f.get('mimeType') == 'application/vnd.google-apps.folder',
+            })
+
+        return {
+            'changes': changes,
+            'new_start_page_token': resp.get('newStartPageToken'),
+            'next_page_token': resp.get('nextPageToken'),
+        }
+
 drive_service = GoogleDriveService()

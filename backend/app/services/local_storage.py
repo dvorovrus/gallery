@@ -48,4 +48,8 @@ class LocalStorageService:
         album_folder = Path(user_folder_path) / f"album_{album_id}"
         return str(album_folder) if album_folder.exists() else None
 
+    def file_exists(self, file_path: str) -> bool:
+        """Проверить существование файла в локальном хранилище"""
+        return bool(file_path) and Path(file_path).exists()
+
 storage_service = LocalStorageService()

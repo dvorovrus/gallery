@@ -14,7 +14,7 @@ from urllib.parse import quote
 from app.core.database import get_db
 from app.core.config import get_settings
 from app.api.auth import get_current_user
-from app.models.models import User, Album, Photo
+from app.models.models import User, Album, Photo, Share
 from app.schemas.schemas import PhotoResponse
 from app.services.photo_thumbnails import generate_thumbnail_bytes
 
@@ -86,6 +86,31 @@ def build_content_disposition(filename: str) -> str:
     ascii_fallback = re.sub(r"[^\x20-\x7E]+", "_", filename).strip() or "download"
     encoded_filename = quote(filename)
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+
+
+def _is_file_gone_error(exc: Exception) -> bool:
+    """Распознать ошибку «файл не найден / удалён» от провайдера хранилища."""
+    msg = str(exc)
+    return any(s in msg for s in ("404", "File not found", "fileId", "cannotDownloadAbusiveFile"))
+
+
+def _purge_photo_if_gone(db: Session, photo: Photo, exc: Exception) -> bool:
+    """
+    Самоисцеление: если файл фото пропал на хранилище — удалить запись из БД.
+    Возвращает True, если запись была удалена.
+    """
+    if not _is_file_gone_error(exc):
+        return False
+    try:
+        print(f"[self-heal] photo {photo.id} file gone, removing DB row")
+        db.query(Share).filter(Share.photo_id == photo.id).delete(synchronize_session=False)
+        db.delete(photo)
+        db.commit()
+        return True
+    except Exception as purge_err:
+        print(f"[self-heal] failed to purge photo {photo.id}: {purge_err}")
+        db.rollback()
+        return False
 
 @router.get("/albums/{album_id}/photos", response_model=List[PhotoResponse])
 def get_album_photos(album_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -247,6 +272,11 @@ def get_photo(
         print(f"Error retrieving photo {photo_id}: {type(e).__name__}: {str(e)}")
         import traceback
         traceback.print_exc()
+        if _purge_photo_if_gone(db, photo, e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Photo no longer exists in storage and was removed"
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve photo: {str(e)}"
@@ -279,6 +309,11 @@ def download_photo(
         }
         return StreamingResponse(io.BytesIO(file_content), media_type=media_type, headers=headers)
     except Exception as e:
+        if _purge_photo_if_gone(db, photo, e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Photo no longer exists in storage and was removed"
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to download photo: {str(e)}"

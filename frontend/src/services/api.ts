@@ -1,4 +1,4 @@
-import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse, UserInfo } from '@/types';
+import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse, UserInfo, SyncResult } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -120,6 +120,14 @@ export const register = async (email: string, password: string) => {
 // Albums
 export const getAlbums = async () => {
   return requestJson<Album[]>('/albums', {
+    headers: getHeaders(),
+  });
+};
+
+// Sync: сверка состояния Google Drive с БД (удаляет "битые" фото/альбомы)
+export const syncNow = async () => {
+  return requestJson<SyncResult>('/sync', {
+    method: 'POST',
     headers: getHeaders(),
   });
 };

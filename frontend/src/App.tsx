@@ -109,6 +109,7 @@ interface PhotoCardProps {
   photo: DownloadablePhoto;
   index: number;
   onPhotoLoad: (photoId: number) => void;
+  onPhotoError: (photoId: number) => void;
   isLoaded: boolean;
   isPriority: boolean;
   onOpenIndex: (index: number) => void;
@@ -177,6 +178,7 @@ interface LightboxProps {
   onShare: () => void;
   onDelete: () => void;
   onDownload: () => void;
+  onPhotoError: (photoId: number) => void;
   showActions?: boolean;
 }
 
@@ -290,6 +292,7 @@ const PhotoCard = memo(function PhotoCard({
   photo,
   index,
   onPhotoLoad,
+  onPhotoError,
   isLoaded,
   isPriority,
   onOpenIndex,
@@ -332,6 +335,7 @@ const PhotoCard = memo(function PhotoCard({
         fetchPriority={isPriority ? 'high' : 'auto'}
         decoding="async"
         onLoad={() => onPhotoLoad(photo.id)}
+        onError={() => onPhotoError(photo.id)}
       />
 
       {/* Чекбокс для режима выбора */}
@@ -914,7 +918,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, type }: DeleteC
 };
 
 // --- Лайтбокс (z-[60]) ---
-const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDelete, onDownload, showActions = true }: LightboxProps) => {
+const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDelete, onDownload, onPhotoError, showActions = true }: LightboxProps) => {
   const { t, i18n } = useTranslation();
   if (!photo) return null;
 
@@ -957,7 +961,13 @@ const Lightbox = ({ photo, photosLength, onClose, onNext, onPrev, onShare, onDel
       )}
 
       <div className="relative w-full h-full flex items-center justify-center p-4 sm:p-16" onClick={onClose}>
-        <img src={photo.fullUrl || getPhotoFullUrl(photo.id)} alt={photo.caption ?? t('app.photoAlt')} className="max-w-full max-h-full object-contain rounded-md shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        <img
+          src={photo.fullUrl || getPhotoFullUrl(photo.id)}
+          alt={photo.caption ?? t('app.photoAlt')}
+          className="max-w-full max-h-full object-contain rounded-md shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+          onError={() => onPhotoError(photo.id)}
+        />
       </div>
     </div>
   );
@@ -1045,11 +1055,27 @@ export default function App() {
     localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // Load albums on mount
+  // Load albums on mount + отложенная сверка с Google Drive
   useEffect(() => {
-    if (isAuthenticated) {
-      loadAlbums();
+    if (!isAuthenticated) return;
+    loadAlbums();
+
+    // Сверка состояния Drive -> БД (не чаще раза в 5 минут)
+    const SYNC_THROTTLE_MS = 5 * 60 * 1000;
+    const lastSync = Number(localStorage.getItem('last_drive_sync_ts') || 0);
+    if (Date.now() - lastSync > SYNC_THROTTLE_MS) {
+      api.syncNow()
+        .then((res) => {
+          localStorage.setItem('last_drive_sync_ts', String(Date.now()));
+          if (res && (res.removed_photos || res.removed_albums)) {
+            // Состояние изменилось — перезагружаем списки
+            loadAlbums();
+            if (selectedAlbumId) loadPhotos(selectedAlbumId);
+          }
+        })
+        .catch((err) => console.error('Drive sync failed:', err));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   // Load photos when album changes
@@ -1274,6 +1300,24 @@ export default function App() {
     }
   };
 
+  // Самоисцеление UI: если фото не загрузилось (файл пропал на Drive),
+  // убираем его из состояния и просим бэкенд очистить запись.
+  const handlePhotoError = useCallback(async (id: number) => {
+    setPhotos((prev) => prev.filter((photo) => photo.id !== id));
+    setLoadedPhotoIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    if (lightboxPhotoIndex !== null) setLightboxPhotoIndex(null);
+    try {
+      await api.deletePhoto(id);
+    } catch {
+      // Молча: запись уже могла быть удалена синхронизацией
+    }
+  }, [lightboxPhotoIndex]);
+
   const handleDownloadPhoto = useCallback(async (photo: DownloadablePhoto) => {
     try {
       const fallbackName = 'filename' in photo && photo.filename ? photo.filename : `${photo.caption || 'photo'}.jpg`;
@@ -1414,6 +1458,7 @@ export default function App() {
           }}
           onShare={() => {}}
           onDelete={() => {}}
+          onPhotoError={() => setSharedLightboxPhotoIndex(null)}
           showActions={false}
         />
       </>
@@ -1489,7 +1534,10 @@ export default function App() {
           }}
           onDelete={() => {
             if (currentLightboxPhoto) handleDeletePhotoPrompt(currentLightboxPhoto);
-          }} 
+          }}
+          onPhotoError={(id: number) => {
+            if (currentLightboxPhoto) handlePhotoError(id);
+          }}
         />
 
         <GeoLanguage />
@@ -1691,6 +1739,7 @@ export default function App() {
                     isLoaded={loadedPhotoIds.has(photo.id)}
                     isPriority={index < PHOTO_PRIORITY_COUNT}
                     onPhotoLoad={handlePhotoLoad}
+                    onPhotoError={handlePhotoError}
                     onOpenIndex={handleOpenPhoto}
                     onDownloadPhoto={handleDownloadPhoto}
                     onSharePhoto={handleSharePhoto}
