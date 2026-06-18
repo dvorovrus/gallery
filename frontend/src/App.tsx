@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Login from './components/Login';
 import Settings from './components/Settings';
+import SetupGuide from './components/SetupGuide';
 import GeoLanguage from './components/GeoLanguage';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import * as api from './services/api';
@@ -1032,6 +1033,7 @@ export default function App() {
   const isLoginRoute = location.pathname === '/login';
   const isSettingsRoute = location.pathname === '/setting';
   const isSettingsAliasRoute = location.pathname === '/settings';
+  const isSetupGuideRoute = location.pathname === '/setup-guide';
 
   // Apply dark mode class to html element
   useEffect(() => {
@@ -1416,6 +1418,10 @@ export default function App() {
         />
       </>
     );
+  }
+
+  if (isSetupGuideRoute) {
+    return <SetupGuide />;
   }
 
   if (isSettingsAliasRoute) {
