@@ -1,6 +1,6 @@
 # Vercel Deployment Guide
 
-## Конфигурация проекта
+## Автоматический деплой по тегу [deploy]
 
 Проект настроен для автоматического деплоя на Vercel при коммитах с тегом `[deploy]` в сообщении.
 
@@ -8,169 +8,165 @@
 
 1. Аккаунт на Vercel
 2. GitHub репозиторий подключен к Vercel
-3. Google Drive Service Account credentials (JSON файл)
-4. Google Drive Folder ID для хранения фотографий
+3. Google Drive Service Account credentials (настраивается через UI после деплоя)
 
-## Настройка Vercel Project
+## Быстрый старт
 
-### 1. Подключите репозиторий к Vercel
+### 1. Импортируйте проект в Vercel
 
-Импортируйте проект в Vercel Dashboard.
+1. Перейдите на https://vercel.com/new
+2. Импортируйте ваш GitHub репозиторий
+3. Vercel автоматически определит настройки
+4. Нажмите "Deploy"
 
 ### 2. Настройте Environment Variables
 
-В настройках проекта на Vercel добавьте следующие переменные окружения:
+В Vercel Dashboard → Settings → Environment Variables добавьте:
 
 ```
 DATABASE_URL=sqlite:////tmp/gallery.db
-SECRET_KEY=<ваш-секретный-ключ-минимум-32-символа>
+SECRET_KEY=<сгенерируйте случайный ключ>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 STORAGE_TYPE=google_drive
 GOOGLE_CREDENTIALS_PATH=/tmp/service-account.json
-GOOGLE_DRIVE_FOLDER_ID=<ваш-folder-id>
-CORS_ORIGINS=https://gallery.fatbox.org
+CORS_ORIGINS=https://your-domain.com
 VITE_API_URL=/api
 ```
 
-**Важно:**
-- Для `SECRET_KEY` используйте надежный случайный ключ (можно сгенерировать: `openssl rand -base64 32`)
-- `GOOGLE_DRIVE_FOLDER_ID` - ID папки в Google Drive, куда будут загружаться фото
-
-### 3. Добавьте Google Service Account Credentials
-
-Создайте секрет с содержимым вашего `service-account.json`:
-
-**Способ 1: Через Vercel CLI**
+**Генерация SECRET_KEY:**
 ```bash
-vercel env add GOOGLE_SERVICE_ACCOUNT_JSON
-# Вставьте содержимое service-account.json файла
+# Python
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# OpenSSL
+openssl rand -base64 32
 ```
 
-**Способ 2: Через Dashboard**
-В настройках проекта добавьте переменную `GOOGLE_SERVICE_ACCOUNT_JSON` со всем содержимым JSON файла.
+### 3. Настройте Custom Domain (опционально)
 
-Затем обновите `api/index.py` чтобы использовать эту переменную:
-```python
-import json
-google_creds = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON')
-if google_creds:
-    with open('/tmp/service-account.json', 'w') as f:
-        f.write(google_creds)
-```
+В Vercel Dashboard → Settings → Domains:
+1. Добавьте ваш домен
+2. Настройте DNS:
+   - CNAME запись: `your-subdomain` → `cname.vercel-dns.com`
+   - Или A запись на IP предоставленный Vercel
 
-### 4. Настройте Custom Domain
+### 4. Автоматический деплой
 
-В настройках проекта на Vercel:
-1. Перейдите в раздел "Domains"
-2. Добавьте домен `gallery.fatbox.org`
-3. Настройте DNS записи согласно инструкциям Vercel
-
-## Процесс деплоя
-
-### Автоматический деплой
-
-Проект настроен на деплой только при коммитах с `[deploy]` в сообщении:
+Для деплоя новых изменений используйте тег `[deploy]`:
 
 ```bash
 git add .
-git commit -m "[deploy] Добавлена новая функция"
-git push origin main
+git commit -m "[deploy] Описание изменений"
+git push origin master
 ```
 
-### Ручной деплой
+Vercel автоматически:
+- Обнаружит коммит с `[deploy]`
+- Соберет frontend
+- Задеплоит serverless functions
+- Обновит production
 
-Через Vercel Dashboard или CLI:
+## Первый запуск приложения
 
-```bash
-vercel --prod
+После успешного деплоя:
+
+1. **Откройте ваше приложение**
+2. **Зарегистрируйтесь** (первый пользователь становится админом)
+3. **Нажмите на ⚙️ Settings** в правом верхнем углу
+4. **Настройте Google Drive:**
+
+### Google Drive Setup через UI
+
+В Settings вы найдете пошаговую инструкцию:
+
+**Шаг 1: Создание Service Account**
+- Откройте [Google Cloud Console](https://console.cloud.google.com/)
+- Создайте проект
+- Включите Google Drive API
+- Создайте Service Account
+- Скачайте JSON ключ
+
+**Шаг 2: Настройка Google Drive**
+- Создайте папку в Google Drive
+- Поделитесь папкой с email Service Account (из JSON файла)
+- Дайте права "Editor"
+- Скопируйте Folder ID из URL
+
+**Шаг 3: Загрузка в UI**
+- Загрузите service-account.json через веб-интерфейс
+- Вставьте Google Drive Folder ID
+- Нажмите "Save Configuration"
+- Нажмите "Test Connection" для проверки
+
+✅ Готово! Фотографии будут сохраняться на Google Drive.
+
+## Архитектура на Vercel
+
+```
+Internet
+    ↓
+Vercel Edge Network (CDN)
+    ↓
+    ├─→ Frontend (Static) - /
+    └─→ Backend API (Serverless) - /api/*
+            ↓
+        Google Drive API
+            ↓
+        Google Drive Storage
 ```
 
-## Структура проекта для Vercel
+### Особенности Vercel Deployment
 
-```
-gallery/
-├── api/
-│   └── index.py          # Vercel serverless function (FastAPI handler)
-├── frontend/
-│   ├── dist/             # Билд frontend (генерируется)
-│   └── src/              # Исходники React
-├── backend/
-│   └── app/              # FastAPI приложение
-├── vercel.json           # Конфигурация Vercel
-└── requirements.txt      # Python зависимости для serverless functions
-```
+**База данных:**
+- SQLite в `/tmp/` (временное хранилище)
+- Сбрасывается при каждом деплое
+- Используется только для сессий и настроек
 
-## Особенности Vercel Deployment
+**Фотографии:**
+- Постоянное хранение в Google Drive
+- Настраивается через админ-панель UI
 
-### Хранилище
+**Serverless Functions:**
+- Автоматическое масштабирование
+- Холодный старт ~1-2 секунды
+- Максимальное время выполнения: 10 сек (Hobby), 60 сек (Pro)
 
-- **База данных:** SQLite в `/tmp/` (временное хранилище, сбрасывается при каждом деплое)
-- **Фотографии:** Google Drive (постоянное хранилище)
+## Ограничения Vercel (Hobby Plan)
 
-⚠️ **Важно:** Для production рекомендуется использовать внешнюю БД (PostgreSQL на Railway, Supabase, и т.д.)
-
-### Ограничения Serverless Functions
-
-- Максимальное время выполнения: 10 секунд (Hobby), 60 секунд (Pro)
-- Максимальный размер загружаемого файла: 4.5 MB (Hobby), 100 MB (Pro)
-- Файловая система доступна только для чтения (кроме `/tmp/`)
-
-## Google Drive Setup
-
-### 1. Создание Service Account
-
-1. Перейдите в [Google Cloud Console](https://console.cloud.google.com/)
-2. Создайте новый проект или выберите существующий
-3. Включите Google Drive API
-4. Создайте Service Account:
-   - IAM & Admin → Service Accounts → Create Service Account
-   - Скачайте JSON ключ
-5. Поделитесь папкой Google Drive с email Service Account
-
-### 2. Получение Folder ID
-
-1. Откройте папку в Google Drive
-2. URL будет выглядеть так: `https://drive.google.com/drive/folders/FOLDER_ID`
-3. Скопируйте `FOLDER_ID`
+- Максимальное время выполнения функции: 10 секунд
+- Максимальный размер загружаемого файла: 4.5 MB
+- Для больших файлов рекомендуется Pro план (100 MB лимит)
 
 ## Troubleshooting
 
-### Ошибки деплоя
-
-**"Module not found"**
-- Проверьте `requirements.txt` в корне проекта
-- Убедитесь что все зависимости указаны
-
-**"Function timeout"**
+### "Function timeout"
 - Загрузка больших файлов может занять время
 - Рассмотрите upgrade до Pro плана
 - Оптимизируйте обработку изображений
 
-**"Google Drive API error"**
-- Проверьте правильность `GOOGLE_SERVICE_ACCOUNT_JSON`
+### "Google Drive API error"
+- Проверьте правильность service-account.json
 - Убедитесь что папка расшарена на Service Account email
-- Проверьте `GOOGLE_DRIVE_FOLDER_ID`
+- Используйте "Test Connection" в Settings
 
-### Проверка логов
-
-```bash
-vercel logs <deployment-url>
-```
-
-Или в Vercel Dashboard → Deployments → выберите деплой → Function Logs
+### Деплой не запускается
+- Убедитесь что в коммите есть тег `[deploy]`
+- Проверьте что репозиторий подключен к Vercel
+- Проверьте логи в Vercel Dashboard
 
 ## Production Checklist
 
-- [ ] Все environment variables настроены
-- [ ] Google Service Account credentials добавлены
-- [ ] Custom domain настроен
-- [ ] SSL сертификат активен (автоматически через Vercel)
-- [ ] База данных (для production - использовать внешнюю БД)
-- [ ] Google Drive папка создана и расшарена
-- [ ] Протестирован деплой с тегом [deploy]
+- [ ] Проект импортирован в Vercel
+- [ ] Environment variables настроены
+- [ ] Custom domain добавлен (опционально)
+- [ ] SSL сертификат активен (автоматически)
+- [ ] Первый пользователь зарегистрирован
+- [ ] Google Drive настроен через Settings UI
+- [ ] Протестирована загрузка фотографий
+- [ ] Протестирован публичный шаринг
 
-## Команды
+## Полезные команды Vercel CLI
 
 ```bash
 # Установить Vercel CLI
@@ -179,18 +175,25 @@ npm i -g vercel
 # Залогиниться
 vercel login
 
-# Деплой в development
-vercel
+# Связать проект
+vercel link
 
-# Деплой в production
-vercel --prod
-
-# Просмотр логов
+# Посмотреть логи
 vercel logs
 
-# Список переменных окружения
-vercel env ls
+# Список деплоев
+vercel ls
 
-# Добавить переменную окружения
-vercel env add
+# Список environment variables
+vercel env ls
 ```
+
+## Мониторинг
+
+- Vercel Dashboard: https://vercel.com/dashboard
+- Deployment logs доступны для каждого деплоя
+- Автоматические уведомления о статусе деплоя
+
+---
+
+**Готово!** Ваше приложение готово к production использованию на Vercel.
