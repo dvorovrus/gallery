@@ -146,18 +146,28 @@ class GoogleDriveService:
     def upload_file(self, file_path: str, filename: str, parent_folder_id: str) -> str:
         """Загрузить файл в папку альбома"""
         self._ensure_initialized()
-        file_metadata = {
-            'name': filename,
-            'parents': [parent_folder_id]
-        }
-        media = MediaFileUpload(file_path, resumable=True)
-        file = self.service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        return file.get('id')
+        try:
+            print(f"Preparing to upload file: {filename} to folder: {parent_folder_id}")
+            file_metadata = {
+                'name': filename,
+                'parents': [parent_folder_id]
+            }
+            media = MediaFileUpload(file_path, resumable=True)
+            print(f"Starting upload to Google Drive...")
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            file_id = file.get('id')
+            print(f"File uploaded successfully, file_id: {file_id}")
+            return file_id
+        except Exception as e:
+            print(f"Error uploading file to Google Drive: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def get_file(self, file_id: str) -> bytes:
         """Получить файл из Google Drive"""

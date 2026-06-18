@@ -44,13 +44,26 @@ def build_thumbnail_bytes(file_content: bytes, width: int) -> bytes:
 
 
 def store_thumbnail_file(original_content: bytes, photo_id: int, album_folder_id: str) -> str:
-    thumbnail_bytes = build_thumbnail_bytes(original_content, 400)
+    try:
+        print(f"Generating thumbnail bytes for photo {photo_id}")
+        thumbnail_bytes = build_thumbnail_bytes(original_content, 400)
+        print(f"Thumbnail bytes generated, size: {len(thumbnail_bytes)} bytes")
+    except Exception as e:
+        print(f"Error generating thumbnail bytes: {str(e)}")
+        raise
+    
     with tempfile.NamedTemporaryFile(delete=False, suffix=f"_thumb_{photo_id}.jpg") as temp_file:
         temp_file.write(thumbnail_bytes)
         temp_path = temp_file.name
 
     try:
-        return storage_service.upload_file(temp_path, build_thumbnail_file_name(photo_id), album_folder_id)
+        print(f"Uploading thumbnail to Google Drive: {build_thumbnail_file_name(photo_id)}")
+        thumbnail_file_id = storage_service.upload_file(temp_path, build_thumbnail_file_name(photo_id), album_folder_id)
+        print(f"Thumbnail uploaded successfully, file_id: {thumbnail_file_id}")
+        return thumbnail_file_id
+    except Exception as e:
+        print(f"Error uploading thumbnail: {str(e)}")
+        raise
     finally:
         if os.path.exists(temp_path):
             os.unlink(temp_path)
@@ -127,13 +140,17 @@ async def upload_photos(
         temp_path = temp_file.name
 
         try:
+            print(f"Starting upload for file: {file.filename}")
             content = await file.read()
+            print(f"File read successfully, size: {len(content)} bytes")
             temp_file.write(content)
             temp_file.close()
 
             # Upload to storage
             unique_filename = f"{uuid.uuid4()}_{file.filename}"
+            print(f"Uploading to Google Drive with filename: {unique_filename}")
             drive_file_id = storage_service.upload_file(temp_path, unique_filename, album_folder_id)
+            print(f"File uploaded successfully, drive_file_id: {drive_file_id}")
 
             # Save to database
             new_photo = Photo(
@@ -146,17 +163,24 @@ async def upload_photos(
 
             db.add(new_photo)
             db.flush()
+            print(f"Photo saved to database with id: {new_photo.id}")
 
             try:
+                print(f"Generating thumbnail for photo {new_photo.id}")
                 thumbnail_file_id = store_thumbnail_file(content, new_photo.id, album_folder_id)
                 new_photo.thumbnail_file_id = thumbnail_file_id
+                print(f"Thumbnail created successfully, thumbnail_file_id: {thumbnail_file_id}")
             except Exception as thumbnail_error:
                 print(f"Warning: Could not create thumbnail for {file.filename}: {str(thumbnail_error)}")
+                import traceback
+                traceback.print_exc()
 
             uploaded_photos.append(new_photo)
 
         except Exception as e:
             print(f"Error uploading file {file.filename}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to upload file {file.filename}: {str(e)}"
