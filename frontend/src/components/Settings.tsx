@@ -13,7 +13,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [folderId, setFolderId] = useState('');
-  const [serviceAccountFile, setServiceAccountFile] = useState<File | null>(null);
+  const [oauthClientFile, setOauthClientFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
@@ -90,7 +90,7 @@ export default function Settings() {
         setError(t('settings.jsonOnly'));
         return;
       }
-      setServiceAccountFile(file);
+      setOauthClientFile(file);
       setError(null);
     }
   };
@@ -98,7 +98,7 @@ export default function Settings() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!folderId || !serviceAccountFile) {
+    if (!folderId || !oauthClientFile) {
       setError(t('settings.missingFields'));
       return;
     }
@@ -106,11 +106,8 @@ export default function Settings() {
     try {
       setUploading(true);
       setError(null);
-      await api.configureGoogleDrive(folderId, serviceAccountFile);
-      await loadSettings();
-      setServiceAccountFile(null);
-      setTestResult(null);
-      alert(t('settings.saved'));
+      const result = await api.startGoogleDriveOAuth(folderId, oauthClientFile);
+      window.location.href = result.auth_url;
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -315,7 +312,7 @@ export default function Settings() {
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                {t('settings.serviceJson')}
+                {t('settings.oauthClientJson')}
               </label>
               <div className="relative">
                 <input
@@ -323,12 +320,12 @@ export default function Settings() {
                   accept=".json"
                   onChange={handleFileChange}
                   className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-2xl file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-neutral-900 hover:file:bg-neutral-800 dark:hover:file:bg-neutral-200 transition-all cursor-pointer"
-                  required={!settings?.google_drive_configured}
+                  required
                 />
               </div>
-              {serviceAccountFile && (
+              {oauthClientFile && (
                 <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                  {t('settings.fileSelected', { name: serviceAccountFile.name })}
+                  {t('settings.fileSelected', { name: oauthClientFile.name })}
                 </p>
               )}
             </div>
@@ -338,7 +335,7 @@ export default function Settings() {
               disabled={uploading}
               className="w-full py-3.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-2xl font-medium disabled:opacity-50 transition-all"
             >
-              {uploading ? t('settings.saving') : t('settings.saveConfig')}
+              {uploading ? t('settings.saving') : t('settings.connectGoogle')}
             </button>
           </form>
         </div>

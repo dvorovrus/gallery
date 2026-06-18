@@ -235,6 +235,25 @@ export const configureGoogleDrive = async (folderId: string, serviceAccountFile:
   return response.json();
 };
 
+export const startGoogleDriveOAuth = async (folderId: string, oauthClientFile: File) => {
+  const formData = new FormData();
+  formData.append('folder_id', folderId);
+  formData.append('oauth_client_file', oauthClientFile);
+
+  const response = await fetch(`${API_BASE_URL}/settings/google-drive/oauth/start`, {
+    method: 'POST',
+    headers: getAuthOnlyHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to start Google Drive OAuth');
+  }
+
+  return response.json() as Promise<{ auth_url: string }>;
+};
+
 export const testGoogleDriveConnection = async () => {
   return requestJson<GoogleDriveTestResponse>('/settings/google-drive/test', {
     method: 'POST',

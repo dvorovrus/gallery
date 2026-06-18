@@ -1,5 +1,7 @@
 import json
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from app.core.config import get_settings
@@ -8,9 +10,53 @@ import io
 import os
 
 settings = get_settings()
+SCOPES = ['https://www.googleapis.com/auth/drive']
+
+
+def get_setting_value(key: str) -> Optional[str]:
+    try:
+        from app.core.database import SessionLocal
+        from app.models.models import Settings as SettingsModel
+
+        db = SessionLocal()
+        try:
+            setting = db.query(SettingsModel).filter(SettingsModel.key == key).first()
+            return setting.value if setting and setting.value else None
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Could not load setting {key} from DB: {e}")
+        return None
+
+
+def set_setting_value(key: str, value: str):
+    from app.core.database import SessionLocal
+    from app.models.models import Settings as SettingsModel
+
+    db = SessionLocal()
+    try:
+        setting = db.query(SettingsModel).filter(SettingsModel.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            db.add(SettingsModel(key=key, value=value))
+        db.commit()
+    finally:
+        db.close()
 
 def get_credentials_from_db():
     """Получить credentials из БД или из файла"""
+    auth_type = get_setting_value("google_drive_auth_type")
+    oauth_token = get_setting_value("google_oauth_token_json")
+
+    if auth_type == "oauth" and oauth_token:
+        token_data = json.loads(oauth_token)
+        credentials = Credentials.from_authorized_user_info(token_data, scopes=SCOPES)
+        if credentials.expired and credentials.refresh_token:
+            credentials.refresh(Request())
+            set_setting_value("google_oauth_token_json", credentials.to_json())
+        return credentials
+
     try:
         from app.core.database import SessionLocal
         from app.models.models import Settings as SettingsModel
@@ -25,7 +71,7 @@ def get_credentials_from_db():
                 credentials_data = json.loads(credentials_setting.value)
                 return service_account.Credentials.from_service_account_info(
                     credentials_data,
-                    scopes=['https://www.googleapis.com/auth/drive']
+                    scopes=SCOPES
                 )
         finally:
             db.close()
@@ -36,7 +82,7 @@ def get_credentials_from_db():
     if settings.GOOGLE_CREDENTIALS_PATH and os.path.exists(settings.GOOGLE_CREDENTIALS_PATH):
         return service_account.Credentials.from_service_account_file(
             settings.GOOGLE_CREDENTIALS_PATH,
-            scopes=['https://www.googleapis.com/auth/drive']
+            scopes=SCOPES
         )
     
     raise Exception("Google Drive credentials not configured")
@@ -72,16 +118,20 @@ class GoogleDriveService:
         self.service = None
         self.root_folder_id = None
         self._initialized = False
+        self._auth_type = None
     
     def _ensure_initialized(self):
         """Lazy initialization of Google Drive service"""
-        if self._initialized:
-            return
-        
         try:
+            auth_type = get_setting_value("google_drive_auth_type") or "service_account"
+            root_folder_id = get_folder_id_from_db()
+            if self._initialized and self._auth_type == auth_type and self.root_folder_id == root_folder_id:
+                return
+
             self.credentials = get_credentials_from_db()
             self.service = build('drive', 'v3', credentials=self.credentials)
-            self.root_folder_id = get_folder_id_from_db()
+            self.root_folder_id = root_folder_id
+            self._auth_type = auth_type
             self._initialized = True
         except Exception as e:
             print(f"Failed to initialize Google Drive service: {str(e)}")

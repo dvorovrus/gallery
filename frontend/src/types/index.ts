@@ -52,6 +52,7 @@ export interface ApiErrorPayload {
 export interface GoogleDriveSettings {
   google_drive_configured: boolean;
   google_drive_folder_id: string | null;
+  google_drive_auth_type?: string | null;
 }
 
 export interface GoogleDriveTestResponse {

@@ -1,23 +1,11 @@
-import { ArrowLeft, ExternalLink, Copy, Check } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Check } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
 import LanguageSwitcher from './LanguageSwitcher';
 
 export default function SetupGuide() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [copiedEmail, setCopiedEmail] = useState(false);
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedEmail(true);
-      setTimeout(() => setCopiedEmail(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-neutral-950 px-4 py-6 sm:px-6">
@@ -34,7 +22,7 @@ export default function SetupGuide() {
                 {t('app.backToSettings')}
               </button>
               <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">
-                Google Drive Service Account Setup Guide
+                Google Drive OAuth Setup Guide
               </h1>
               <p className="mt-3 max-w-2xl text-neutral-600 dark:text-neutral-400">
                 Complete step-by-step guide to configure Google Drive API access for the Gallery application
@@ -55,10 +43,10 @@ export default function SetupGuide() {
             <li><a href="#step4" className="hover:text-neutral-900 dark:hover:text-white">Step 4: Enable 2-Step Verification (if required)</a></li>
             <li><a href="#step5" className="hover:text-neutral-900 dark:hover:text-white">Step 5: Create New Project</a></li>
             <li><a href="#step6" className="hover:text-neutral-900 dark:hover:text-white">Step 6: Enable Google Drive API</a></li>
-            <li><a href="#step7" className="hover:text-neutral-900 dark:hover:text-white">Step 7: Create Service Account</a></li>
-            <li><a href="#step8" className="hover:text-neutral-900 dark:hover:text-white">Step 8: Create and Download JSON Key</a></li>
-            <li><a href="#step9" className="hover:text-neutral-900 dark:hover:text-white">Step 9: Create Shared Drive Folder</a></li>
-            <li><a href="#step10" className="hover:text-neutral-900 dark:hover:text-white">Step 10: Add Service Account to Shared Drive</a></li>
+            <li><a href="#step7" className="hover:text-neutral-900 dark:hover:text-white">Step 7: Configure OAuth Consent Screen</a></li>
+            <li><a href="#step8" className="hover:text-neutral-900 dark:hover:text-white">Step 8: Create OAuth Client JSON</a></li>
+            <li><a href="#step9" className="hover:text-neutral-900 dark:hover:text-white">Step 9: Create Google Drive Folder</a></li>
+            <li><a href="#step10" className="hover:text-neutral-900 dark:hover:text-white">Step 10: Connect Your Google Account</a></li>
             <li><a href="#step11" className="hover:text-neutral-900 dark:hover:text-white">Step 11: Get Folder ID</a></li>
             <li><a href="#step12" className="hover:text-neutral-900 dark:hover:text-white">Step 12: Configure Your Application</a></li>
           </ol>
@@ -70,7 +58,7 @@ export default function SetupGuide() {
           <ul className="list-disc ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
             <li>Google account</li>
             <li>Access to Google Cloud Console</li>
-            <li>Admin rights to create Service Accounts</li>
+            <li>Permission to create OAuth clients in Google Cloud</li>
           </ul>
         </section>
 
@@ -196,43 +184,38 @@ export default function SetupGuide() {
 
         {/* Step 7 */}
         <section id="step7" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 7: Create Service Account</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 7: Configure OAuth Consent Screen</h2>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
-            <li>On the left sidebar, click <strong>"Credentials"</strong></li>
-            <li>Click the <strong>"+ Create credentials"</strong> button at the top</li>
-            <li>Select <strong>"Service account"</strong></li>
-            <li>Enter a <strong>Service account name</strong> (e.g., "gallery-drive-access")</li>
-            <li>Click <strong>"Create and continue"</strong></li>
-            <li>Skip the optional sections and click <strong>"Create and close"</strong></li>
+            <li>Open <strong>"APIs & Services"</strong> → <strong>"OAuth consent screen"</strong></li>
+            <li>Select <strong>"External"</strong> if this is a personal Google account</li>
+            <li>Enter the app name, support email, and developer contact email</li>
+            <li>Add the scope <strong>Google Drive API / .../auth/drive</strong></li>
+            <li>Add your Google account as a test user if the app is in testing mode</li>
+            <li>Save the consent screen</li>
           </ol>
         </section>
 
         {/* Step 8 */}
         <section id="step8" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 8: Create and Download JSON Key</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 8: Create OAuth Client JSON</h2>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
-            <li>In the Service Accounts section, click on the service account email link</li>
-            <li>Click on the <strong>"Keys"</strong> tab</li>
-            <li>Click <strong>"Add key"</strong> → <strong>"Create new key"</strong></li>
-            <li>Select <strong>JSON</strong> format</li>
+            <li>Open <strong>"APIs & Services"</strong> → <strong>"Credentials"</strong></li>
+            <li>Click <strong>"+ Create credentials"</strong> → <strong>"OAuth client ID"</strong></li>
+            <li>Select <strong>"Web application"</strong></li>
+            <li>Add this authorized redirect URI: <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded text-xs">https://gallery.fatbox.org/api/settings/google-drive/oauth/callback</code></li>
             <li>Click <strong>"Create"</strong></li>
-            <li>The JSON key file will be downloaded automatically</li>
+            <li>Download the OAuth Client JSON file</li>
           </ol>
           <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-2xl">
             <p className="text-sm text-yellow-800 dark:text-yellow-300">
-              <strong>⚠️ Important:</strong> Keep this JSON file secure! Never commit it to version control or share it publicly.
+              <strong>Important:</strong> Upload this OAuth Client JSON on the Settings page. Do not upload a Service Account JSON file.
             </p>
           </div>
         </section>
 
         {/* Step 9 */}
         <section id="step9" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 9: Create Shared Drive Folder</h2>
-          <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-2xl">
-            <p className="text-sm text-yellow-800 dark:text-yellow-300">
-              <strong>Important:</strong> Do not use a regular My Drive folder. Service Accounts have no storage quota and can upload files only to a Shared Drive.
-            </p>
-          </div>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 9: Create Google Drive Folder</h2>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
             <li>
               Go to{' '}
@@ -246,9 +229,6 @@ export default function SetupGuide() {
                 <ExternalLink className="w-3 h-3" />
               </a>
             </li>
-            <li>Open <strong>"Shared drives"</strong> in the left sidebar</li>
-            <li>Click <strong>"New"</strong> and create a Shared Drive (for example, "Gallery")</li>
-            <li>Open the new Shared Drive</li>
             <li>Click <strong>"New"</strong> button</li>
             <li>Select <strong>"New folder"</strong></li>
             <li>Enter a folder name (e.g., "Gallery Photos")</li>
@@ -258,25 +238,14 @@ export default function SetupGuide() {
 
         {/* Step 10 */}
         <section id="step10" className="mb-8 bg-neutral-50 dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6">
-          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 10: Add Service Account to Shared Drive</h2>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">Step 10: Connect Your Google Account</h2>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
-            <li>Open your Shared Drive</li>
-            <li>Click <strong>"Manage members"</strong></li>
-            <li>In the text field, paste the Service Account email address (from the JSON file, <code className="bg-neutral-200 dark:bg-neutral-800 px-1 rounded">client_email</code> field)</li>
-            <li>
-              Example: <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded text-xs">gallery-drive-access@project-name.iam.gserviceaccount.com</code>
-              <button
-                onClick={() => copyToClipboard('gallery-drive-access@project-name.iam.gserviceaccount.com')}
-                className="ml-2 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {copiedEmail ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                {copiedEmail ? 'Copied!' : 'Copy example'}
-              </button>
-            </li>
-            <li>Select <strong>"Content manager"</strong> or <strong>"Manager"</strong> permission level</li>
-            <li>Click <strong>"Send"</strong> or <strong>"Share"</strong></li>
-            <li>If prompted, click <strong>"Share anyway"</strong></li>
-            <li>Click <strong>"Done"</strong></li>
+            <li>Go back to the Gallery settings page</li>
+            <li>Paste the Folder ID</li>
+            <li>Upload the OAuth Client JSON file</li>
+            <li>Click <strong>"Connect Google Drive"</strong></li>
+            <li>Choose your Google account and allow Drive access</li>
+            <li>You will be redirected back to Gallery settings</li>
           </ol>
         </section>
 
@@ -309,7 +278,7 @@ export default function SetupGuide() {
             Now you have everything needed:
           </p>
           <ol className="list-decimal ml-6 space-y-2 text-neutral-700 dark:text-neutral-300">
-            <li><strong>Service Account JSON Key File</strong> - The downloaded file</li>
+            <li><strong>OAuth Client JSON File</strong> - The downloaded file</li>
             <li><strong>Folder ID</strong> - The ID from the URL</li>
           </ol>
           <div className="mt-6">
@@ -337,15 +306,15 @@ export default function SetupGuide() {
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>Created a Service Account</span>
+              <span>Configured OAuth consent screen</span>
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>Generated and downloaded JSON key file</span>
+              <span>Generated and downloaded OAuth Client JSON file</span>
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>Created a Shared Drive folder and added the Service Account as a member</span>
+              <span>Created Google Drive folder</span>
             </li>
             <li className="flex items-start gap-2">
               <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
