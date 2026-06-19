@@ -300,9 +300,12 @@ async def upload_photos(
             raise
         except Exception as e:
             logger.exception("Error uploading file %s", file.filename)
+            # Показываем сообщение об ошибке фронту, чтобы упростить диагностику.
+            # В production логи могут быть недоступны пользователю.
+            detail = f"Failed to upload file {file.filename}: {e}"
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload file {file.filename}."
+                detail=detail
             )
         finally:
             # Clean up temp file
