@@ -65,6 +65,7 @@
 В Vercel Dashboard добавьте:
 
 ```env
+ENVIRONMENT=production
 DATABASE_URL=sqlite:////tmp/gallery.db
 SECRET_KEY=<сгенерируйте: openssl rand -base64 32>
 ALGORITHM=HS256
@@ -73,7 +74,24 @@ STORAGE_TYPE=google_drive
 GOOGLE_CREDENTIALS_PATH=/tmp/service-account.json
 CORS_ORIGINS=https://your-domain.com
 VITE_API_URL=/api
+CRON_SECRET=<сгенерируйте: openssl rand -base64 32>
 ```
+
+> ⚠️ В `production` приложение откажется запускаться с дефолтным/слабым `SECRET_KEY`.
+
+### 4a. Автоудаление альбомов по таймеру (Vercel Cron)
+
+На serverless-хостинге фоновый планировщик не выживает между вызовами, поэтому
+автоудаление альбомов с истёкшим сроком (7/14/30 дней) выполняется по расписанию
+через **Vercel Cron** (уже описан в `vercel.json`, путь
+`/internal/cleanup-expired-albums`, каждые 10 минут).
+
+Для авторизации cron-запроса задайте переменную `CRON_SECRET` **одинаково** в двух местах:
+1. В Environment Variables проекта (читается приложением).
+2. В настройках Vercel Cron как секрет — тогда Vercel будет слать
+   `Authorization: Bearer <CRON_SECRET>`.
+
+Эндпоинт также доступен любому аутентифицированному пользователю для ручного запуска.
 
 ### 4. Настройте автоматический деплой по тегу [deploy]
 

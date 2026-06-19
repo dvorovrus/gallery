@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.config import get_settings
+from app.core.dt import utcnow
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -59,7 +60,7 @@ def delete_album_task(album_id: int):
             return
         
         # Check if album is actually expired
-        if album.expires_at and album.expires_at > datetime.utcnow():
+        if album.expires_at and album.expires_at > utcnow():
             logger.warning(f"Album {album_id} not yet expired, skipping deletion")
             return
         
@@ -109,7 +110,7 @@ def cleanup_expired_albums_task():
     try:
         from app.models.models import Album
         
-        now = datetime.utcnow()
+        now = utcnow()
         
         # Find albums that are expired but still exist
         expired_albums = db.query(Album).filter(
@@ -269,7 +270,7 @@ class AlbumSchedulerService:
             logger.warning(f"Unknown expiration type: {expiration_type}, treating as unlimited")
             return None
         
-        return datetime.utcnow() + delta
+        return utcnow() + delta
 
 
 # Global scheduler instance

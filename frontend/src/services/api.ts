@@ -1,4 +1,4 @@
-import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse, UserInfo, SyncResult } from '@/types';
+import type { Album, AuthTokens, Photo, User, GoogleDriveSettings, GoogleDriveTestResponse, UserInfo, ShareLink, SyncResult } from '@/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -154,6 +154,15 @@ export const getPhotos = async (albumId: number) => {
   });
 };
 
+// Подписанный короткоживущий токен для бинарного доступа к фото альбома.
+// Нужен, чтобы рендерить <img src="/api/photos/{id}?token=..."> без передачи JWT в URL.
+export const getMediaToken = async (albumId: number): Promise<string> => {
+  const data = await requestJson<{ token: string }>(`/albums/${albumId}/media-token`, {
+    headers: getHeaders(),
+  });
+  return data.token;
+};
+
 export const uploadPhoto = async (albumId: number, file: File, caption?: string) => {
   const formData = new FormData();
   formData.append('files', file);
@@ -215,6 +224,76 @@ export const downloadAlbum = async (albumId: number, fallbackName: string) => {
   const blob = await response.blob();
   const matchedName = getFilenameFromDisposition(response.headers.get('Content-Disposition'));
   triggerBlobDownload(blob, matchedName || fallbackName);
+};
+
+// Share
+export interface ShareData {
+  version?: number;
+  token: string;
+  mediaToken?: string | null;
+  type: 'album' | 'photo';
+  title?: string;
+  accessType?: 'public' | 'password';
+  album?: { id: number; title: string; created_at: string } | null;
+  photo?: {
+    id: number;
+    caption: string | null;
+    created_at: string;
+    fullUrl: string;
+    thumbnailUrl: string;
+  } | null;
+  photos?: Array<{
+    id: number;
+    caption: string | null;
+    created_at: string;
+    fullUrl: string;
+    thumbnailUrl: string;
+  }>;
+  passwordRequired?: boolean;
+  expirationType?: string;
+  expiresAt?: string | null;
+  password?: string;
+}
+
+// Метаданные share-ссылки: для публичной сразу возвращает контент + mediaToken,
+// для запароленной — только флаг passwordRequired.
+export const getShareMeta = async (token: string) => {
+  return requestJson<ShareData>(`/share/${encodeURIComponent(token)}`, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+// Разблокировать контент share-ссылки паролем (передаётся в теле, не в URL).
+// Возвращает полный контент и mediaToken для бинарного доступа.
+export const unlockShare = async (token: string, password: string) => {
+  return requestJson<ShareData>(`/share/${encodeURIComponent(token)}/access`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ password }),
+  });
+};
+
+export const createAlbumShare = async (albumId: string | number, password?: string) => {
+  return requestJson<ShareLink>(`/albums/${albumId}/share`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ password: password || null }),
+  });
+};
+
+export const createPhotoShare = async (photoId: string | number, password?: string) => {
+  return requestJson<ShareLink>(`/photos/${photoId}/share`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ password: password || null }),
+  });
+};
+
+// Текущий пользователь (используется, в частности, для определения роли).
+export const getCurrentUser = async () => {
+  return requestJson<User>('/auth/me', {
+    headers: getHeaders(),
+  });
 };
 
 // Settings

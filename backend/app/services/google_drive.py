@@ -1,4 +1,5 @@
 import json
+import logging
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -9,6 +10,7 @@ from typing import Optional
 import io
 import os
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
@@ -25,7 +27,7 @@ def get_setting_value(key: str) -> Optional[str]:
         finally:
             db.close()
     except Exception as e:
-        print(f"Could not load setting {key} from DB: {e}")
+        logger.warning("Could not load setting %s from DB: %s", key, e)
         return None
 
 
@@ -76,7 +78,7 @@ def get_credentials_from_db():
         finally:
             db.close()
     except Exception as e:
-        print(f"Could not load credentials from DB: {e}")
+        logger.warning("Could not load credentials from DB: %s", e)
     
     # Fallback to file-based credentials
     if settings.GOOGLE_CREDENTIALS_PATH and os.path.exists(settings.GOOGLE_CREDENTIALS_PATH):
@@ -104,7 +106,7 @@ def get_folder_id_from_db():
         finally:
             db.close()
     except Exception as e:
-        print(f"Could not load folder_id from DB: {e}")
+        logger.warning("Could not load folder_id from DB: %s", e)
     
     # Fallback to settings
     if settings.GOOGLE_DRIVE_FOLDER_ID:
@@ -134,7 +136,7 @@ class GoogleDriveService:
             self._auth_type = auth_type
             self._initialized = True
         except Exception as e:
-            print(f"Failed to initialize Google Drive service: {str(e)}")
+            logger.error("Failed to initialize Google Drive service: %s", e)
             raise Exception(
                 "Google Drive is not configured. Please go to Settings page and configure Google Drive credentials."
             ) from e
@@ -197,13 +199,13 @@ class GoogleDriveService:
         """Загрузить файл в папку альбома"""
         self._ensure_initialized()
         try:
-            print(f"Preparing to upload file: {filename} to folder: {parent_folder_id}")
+            logger.debug("Preparing to upload file: %s to folder: %s", filename, parent_folder_id)
             file_metadata = {
                 'name': filename,
                 'parents': [parent_folder_id]
             }
             media = MediaFileUpload(file_path, resumable=True)
-            print(f"Starting upload to Google Drive...")
+            logger.debug("Starting upload to Google Drive...")
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
@@ -211,12 +213,10 @@ class GoogleDriveService:
                 supportsAllDrives=True
             ).execute()
             file_id = file.get('id')
-            print(f"File uploaded successfully, file_id: {file_id}")
+            logger.debug("File uploaded successfully, file_id: %s", file_id)
             return file_id
         except Exception as e:
-            print(f"Error uploading file to Google Drive: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error uploading file to Google Drive: %s", e)
             if "storageQuotaExceeded" in str(e) or "Service Accounts do not have storage quota" in str(e):
                 raise Exception(
                     "Google Drive folder must be inside a Shared Drive. Service Accounts cannot upload files to a regular My Drive folder because they have no storage quota."

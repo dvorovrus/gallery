@@ -32,15 +32,55 @@
 
 ### 1.3 Настройка OAuth Consent Screen
 
-1. Перейдите: **APIs & Services** → **OAuth consent screen**
-2. Выберите тип: **External** (для личного использования)
-3. Нажмите **"Create"**
+Если OAuth Consent Screen еще не настроен, вы увидите сообщение:
+_"Google Auth Platform not configured yet"_
+
+1. Перейдите: **APIs & Services** → **OAuth consent screen** (или нажмите **"Get started"** в разделе Branding)
+2. Откроется страница **"Project configuration"** с пошаговым мастером
+
+#### Шаг 1: App Information
 
 Заполните форму:
-- **App name:** `Photo Gallery`
-- **User support email:** ваш email
-- **Developer contact email:** ваш email
-- Нажмите **"Save and Continue"**
+- **App name:** `Photo Gallery` (название приложения, которое увидят пользователи)
+- **User support email:** выберите ваш email из выпадающего списка
+- Нажмите **"Next"**
+
+#### Шаг 2: Audience
+
+Выберите тип аудитории:
+
+**Варианты:**
+- **Internal** — только для пользователей внутри вашей организации (требуется Google Workspace)
+- **External** — доступно любому пользователю с Google аккаунтом (✅ выберите этот вариант)
+
+**Выберите: External**
+
+После выбора **External** приложение запустится в тестовом режиме. Вы сможете добавить себя в список тест-пользователей на следующих шагах.
+
+- Нажмите **"Next"**
+
+#### Шаг 3: Contact Information
+
+Введите контактные данные разработчика:
+
+- **Email addresses:** введите ваш Gmail адрес (обязательное поле)
+  - Можно указать несколько адресов через запятую
+  - Этот email Google будет использовать для связи по вопросам приложения
+
+- Нажмите **"Next"**
+
+#### Шаг 4: Finish
+
+На последнем шаге нужно принять условия:
+
+1. Установите галочку: **"I agree to the Google API Services: User Data Policy"**
+2. Нажмите **"Continue"**
+3. Нажмите **"Create"**
+
+После создания вы увидите страницу **OAuth Overview** с сообщением:
+✅ _"OAuth configuration created!"_
+
+Теперь OAuth Consent Screen настроен, и вы можете создавать OAuth Client ID.
 
 ### 1.4 Добавьте Scopes
 
@@ -62,11 +102,81 @@
 
 ### 1.6 Создайте OAuth Client ID
 
-1. Перейдите: **APIs & Services** → **Credentials**
-2. Нажмите **"Create Credentials"** → **"OAuth client ID"**
-3. Выберите тип: **Desktop app**
-4. Название: `Photo Gallery Desktop`
-5. Нажмите **"Create"**
+После создания OAuth Consent Screen вернитесь на страницу **OAuth Overview** и нажмите **"Create OAuth client"**.
+
+#### Шаг 1: Выберите тип приложения
+
+На странице **"Create OAuth client ID"** выберите тип приложения:
+
+**Application type:** откройте выпадающий список и выберите:
+- **Web application** — если ваш backend работает как веб-сервер (FastAPI/Flask)
+- **Desktop app** — если запускаете OAuth flow локально
+
+Для этого проекта рекомендуется выбрать **Web application**, так как backend работает через uvicorn.
+
+#### Шаг 2: Настройте Web application
+
+После выбора **Web application** появятся дополнительные поля:
+
+**Name:**
+Впишите: `Photo Gallery Web`
+
+**Authorized JavaScript origins:**
+Нажмите **"+ Add URI"** и добавьте:
+```
+https://gallery.fatbox.org
+```
+
+**Authorized redirect URIs:**
+Нажмите **"+ Add URI"** и добавьте:
+```
+https://gallery.fatbox.org/api/settings/google-drive/oauth/callback
+```
+
+⚠️ **Важно:** 
+- Используйте точный домен вашего приложения
+- Обязательно используйте **https://** (не http://)
+- Redirect URI должен совпадать с endpoint в вашем backend
+- Домены будут автоматически добавлены в OAuth consent screen как authorized domains
+
+#### Шаг 3: Создайте клиент
+
+Нажмите **"Create"** в нижней части страницы.
+
+⚠️ **Примечание:** Изменения могут вступить в силу через 5 минут - несколько часов.
+
+---
+
+## Шаг 1.7: Добавьте Test Users
+
+После создания OAuth Client вы увидите ошибку при попытке авторизации:
+
+```
+Ошибка 403: access_denied
+Мы пока не проверили приложение "fatbox.org"
+```
+
+Это происходит потому, что OAuth consent screen находится в режиме **Testing**, и только добавленные тест-пользователи могут авторизоваться.
+
+### Как добавить Test Users:
+
+1. В левом меню перейдите: **Google Auth Platform** → **Audience**
+2. На странице **Audience** прокрутите вниз до раздела **"Test users"**
+3. Нажмите **"+ Add users"**
+4. Откроется боковая панель **"Add users"** справа
+5. В текстовое поле введите Gmail адреса пользователей (по одному на строку):
+   ```
+   your-email@gmail.com
+   another-user@gmail.com
+   ```
+6. Счетчик покажет: `0 / 100` (максимум 100 пользователей)
+7. Нажмите **"Save"**
+
+⚠️ **Важно:**
+- **Publishing status: Testing** — только тест-пользователи могут авторизоваться
+- **OAuth user cap:** максимум 100 тест-пользователей
+- Счетчик считается на протяжении всей жизни приложения
+- Для публичного доступа нажмите **"Publish app"** (требует верификации Google)
 
 ### 1.7 Скачайте credentials
 

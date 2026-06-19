@@ -3,6 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
@@ -17,7 +20,7 @@ if google_creds:
         # Update environment to point to the temp file
         os.environ['GOOGLE_CREDENTIALS_PATH'] = '/tmp/service-account.json'
     except Exception as e:
-        print(f"Warning: Failed to setup Google credentials: {e}")
+        logger.warning("Failed to setup Google credentials: %s", e)
 
 from app.api import auth, albums, photos, share, admin
 from app.core.config import get_settings

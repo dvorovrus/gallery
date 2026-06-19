@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, status, UploadFile, File, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -6,9 +6,14 @@ from pydantic import BaseModel
 import json
 import os
 import secrets
+import logging
 from app.core.database import get_db
-from app.api.auth import get_current_user
+from app.core.config import get_settings
+from app.api.auth import get_current_user, get_optional_user
 from app.models.models import User, Settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(tags=["admin"])
 
@@ -128,7 +133,7 @@ async def configure_google_drive(
         with open(service_account_path, 'w') as f:
             f.write(content.decode('utf-8'))
     except Exception as e:
-        print(f"Warning: Could not save service-account.json to disk: {e}")
+        logger.warning("Could not save service-account.json to disk: %s", e)
     
     return {
         "success": True,
@@ -227,7 +232,7 @@ def google_drive_oauth_callback(
         db.query(Settings).filter(Settings.key == "google_oauth_state").delete(synchronize_session=False)
         db.commit()
     except Exception as e:
-        print(f"OAuth callback failed: {e}")
+        logger.warning("OAuth callback failed: %s", e)
         return RedirectResponse(url="/setting?oauth=failed", status_code=status.HTTP_302_FOUND)
 
     return RedirectResponse(url="/setting?oauth=success", status_code=status.HTTP_302_FOUND)
@@ -324,9 +329,10 @@ def test_google_drive_connection(
         }
         
     except Exception as e:
+        logger.warning("Google Drive connection test failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to connect to Google Drive: {str(e)}"
+            detail="Failed to connect to Google Drive. Check credentials, folder ID and permissions."
         )
 
 
@@ -440,15 +446,58 @@ def delete_user(
 
 @router.post("/sync")
 def sync_storage(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Сверить состояние хранилища (Google Drive) с БД и удалить записи,
-    ссылающиеся на удалённые файлы/альбомы. Доступна любому аутентифицированному
-    пользователю: сверка глобальная (токен Drive Changes общий), удаляются только
-    уже осиротевшие записи, возвращаются лишь счётчики.
+    ссылающиеся на удалённые файлы/альбомы. Доступна только администраторам:
+    сверка глобальная (токен Drive Changes общий), удаляются осиротевшие записи.
     """
     from app.services.sync import sync_drive_to_db
     stats = sync_drive_to_db(db)
     return {"success": True, **stats}
+
+
+def _cron_secret_ok(*provided_tokens: Optional[str]) -> bool:
+    """Вернуть True, если хоть один переданный токен совпадает с CRON_SECRET."""
+    if not settings.CRON_SECRET:
+        return False
+    expected = settings.CRON_SECRET.strip()
+    for provided in provided_tokens:
+        if not provided:
+            continue
+        candidate = provided.strip()
+        # Поддержка формата "Bearer <secret>"
+        if candidate.lower().startswith("bearer "):
+            candidate = candidate[7:].strip()
+        if len(candidate) == len(expected) and secrets.compare_digest(candidate, expected):
+            return True
+    return False
+
+
+@router.post("/internal/cleanup-expired-albums")
+def cleanup_expired_albums_endpoint(
+    x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
+    authorization: Optional[str] = Header(None),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Удалить альбомы с истёкшим сроком действия.
+
+    В serverless-окружении (Vercel) фоновый планировщик не выживает, поэтому
+    автоудаление вызывается внешним cron (Vercel Cron), который аутентифицируется
+    заголовком ``Authorization: Bearer <CRON_SECRET>`` или ``X-Cron-Secret``.
+    Либо эндпоинт может быть вызван вручную любым аутентифицированным
+    пользователем (fallback для local dev и ручного запуска).
+    """
+    is_cron = _cron_secret_ok(x_cron_secret, authorization)
+    if not is_cron and current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication or valid cron secret required",
+        )
+
+    from app.services.scheduler import cleanup_expired_albums_task
+    cleanup_expired_albums_task()
+    return {"success": True}

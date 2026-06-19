@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import datetime
+import logging
 from app.core.database import get_db
 from app.core.config import get_settings
+from app.core.dt import utcnow
 from app.api.auth import get_current_user
 from app.models.models import User, Album, Photo
 from app.schemas.schemas import AlbumCreate, AlbumResponse
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Выбор хранилища в зависимости от настроек
@@ -81,21 +83,20 @@ def delete_album(album_id: int, current_user: User = Depends(get_current_user), 
             if photo.thumbnail_file_id:
                 storage_service.delete_file(photo.thumbnail_file_id)
         except Exception as e:
-            print(f"Failed to delete photo file {photo.id}: {str(e)}")
+            logger.warning("Failed to delete photo file %s: %s", photo.id, e)
 
         # Delete photo record from database
         db.delete(photo)
 
     # Delete album folder from storage
     try:
-        # Находим папку альбома по имени
         user_folder_id = storage_service.create_user_folder(current_user.id)
         album_folder_id = storage_service.get_album_folder_id(user_folder_id, album_id)
         if album_folder_id:
             storage_service.delete_folder(album_folder_id)
-            print(f"Deleted album folder: album_{album_id}")
+            logger.info("Deleted album folder: album_%s", album_id)
     except Exception as e:
-        print(f"Failed to delete album folder: {str(e)}")
+        logger.warning("Failed to delete album folder: %s", e)
 
     # Delete album record from database
     db.delete(album)
@@ -126,7 +127,7 @@ def get_album_time_remaining(album_id: int, current_user: User = Depends(get_cur
             "minutes_remaining": None
         }
     
-    now = datetime.utcnow()
+    now = utcnow()
     is_expired = album.expires_at <= now
     
     if is_expired:

@@ -1,23 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel
 import secrets
 import io
 import zipfile
 import os
 import mimetypes
 import re
+import logging
 from urllib.parse import quote
 from app.core.database import get_db
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash, verify_password, create_media_token, decode_media_token
 from app.api.auth import get_current_user
 from app.models.models import User, Album, Share, Photo
 from app.schemas.schemas import ShareCreate, ShareResponse, AlbumResponse, PhotoResponse
-from typing import List
 from app.core.config import get_settings
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Select storage based on settings
 if settings.STORAGE_TYPE == "google_drive":
@@ -140,128 +142,173 @@ def create_photo_share_link(
         created_at=new_share.created_at
     )
 
-@router.get("/share/{token}")
-def get_shared_content(
-    token: str,
-    password: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
-):
+class ShareAccessRequest(BaseModel):
+    password: Optional[str] = None
+
+
+def _resolve_share(db: Session, token: str) -> Share:
     share = db.query(Share).filter(Share.token == token).first()
-
     if not share:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Share link not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found")
+    return share
 
-    # Check password if required
+
+def _verify_share_password(share: Share, password: Optional[str]) -> None:
+    """Если share запаролен — проверить пароль, иначе поднять 401."""
     if share.password_hash:
         if not password or not verify_password(password, share.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect password"
+                detail="Incorrect password",
             )
+
+
+def _share_media_token_ok(share: Share, token: Optional[str]) -> bool:
+    """
+    Проверить, что подписанный media-token (scope=share) соответствует данной share-ссылке.
+    Пароль уже был проверен при выдаче токена (см. access-эндпоинт), поэтому здесь
+    сверяется только принадлежность токена к этой share.
+    """
+    if not token:
+        return False
+    payload = decode_media_token(token)
+    if not payload or payload.get("scope") != "share":
+        return False
+    try:
+        return int(payload.get("ref")) == share.id
+    except (TypeError, ValueError):
+        return False
+
+
+def _build_share_payload(db: Session, share: Share, with_content: bool) -> dict:
+    """
+    Сформировать ответ share-ссылки. Если with_content=False (запароленный шар
+    до ввода пароля) — отдаются только метаданные и флаг passwordRequired,
+    контент и mediaToken отсутствуют.
+    """
+    media_token = create_media_token(scope="share", ref_id=share.id) if with_content else None
+    is_password = share.password_hash is not None
+
+    def photo_url(photo: Photo, thumbnail: bool) -> str:
+        base = f"/api/photos/{photo.id}" + ("?thumbnail=true&width=400" if thumbnail else "")
+        return f"{base}&token={media_token}" if media_token else base
 
     # Handle album share
     if share.album_id:
         album = db.query(Album).filter(Album.id == share.album_id).first()
-        photos = db.query(Photo).filter(Photo.album_id == share.album_id).all()
+        photo_responses: List[dict] = []
+        if with_content:
+            for photo in db.query(Photo).filter(Photo.album_id == share.album_id).all():
+                photo_responses.append({
+                    "id": photo.id,
+                    "caption": photo.caption,
+                    "created_at": photo.created_at,
+                    "fullUrl": photo_url(photo, False),
+                    "thumbnailUrl": photo_url(photo, True),
+                })
 
-        # Convert photos to response format with URLs
-        photo_responses = []
-        for photo in photos:
-            photo_responses.append({
+        return {
+            "version": 1,
+            "token": share.token,
+            "mediaToken": media_token,
+            "type": "album",
+            "title": album.title if album else "Album",
+            "accessType": "password" if is_password else "public",
+            "album": {
+                "id": album.id,
+                "title": album.title,
+                "created_at": album.created_at,
+            } if album else None,
+            "photo": None,
+            "photos": photo_responses,
+            "passwordRequired": is_password,
+            "expirationType": album.expiration_type if album else "unlimited",
+            "expiresAt": album.expires_at if album else None,
+        }
+
+    # Handle photo share
+    if share.photo_id:
+        photo = db.query(Photo).filter(Photo.id == share.photo_id).first()
+        if not photo:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+        album = db.query(Album).filter(Album.id == photo.album_id).first()
+
+        photo_data = None
+        if with_content:
+            photo_data = {
                 "id": photo.id,
                 "caption": photo.caption,
                 "created_at": photo.created_at,
-                "fullUrl": f"/photos/{photo.id}",
-                "thumbnailUrl": f"/photos/{photo.id}?thumbnail=true&width=400"
-            })
+                "fullUrl": photo_url(photo, False),
+                "thumbnailUrl": photo_url(photo, True),
+            }
 
         return {
             "version": 1,
             "token": share.token,
-            "type": "album",
-            "title": album.title,
-            "accessType": "password" if share.password_hash else "public",
-            "album": {
-                "id": album.id,
-                "title": album.title,
-                "created_at": album.created_at
-            },
-            "photo": None,
-            "photos": photo_responses,
-            "passwordRequired": share.password_hash is not None,
-            "expirationType": album.expiration_type,
-            "expiresAt": album.expires_at
-        }
-    
-    # Handle photo share
-    elif share.photo_id:
-        photo = db.query(Photo).filter(Photo.id == share.photo_id).first()
-        
-        if not photo:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Photo not found"
-            )
-        
-        album = db.query(Album).filter(Album.id == photo.album_id).first()
-        
-        photo_data = {
-            "id": photo.id,
-            "caption": photo.caption,
-            "created_at": photo.created_at,
-            "fullUrl": f"/photos/{photo.id}",
-            "thumbnailUrl": f"/photos/{photo.id}?thumbnail=true&width=400"
-        }
-
-        return {
-            "version": 1,
-            "token": share.token,
+            "mediaToken": media_token,
             "type": "photo",
             "title": photo.caption or "Фото",
-            "accessType": "password" if share.password_hash else "public",
+            "accessType": "password" if is_password else "public",
             "album": {
                 "id": album.id,
                 "title": album.title,
-                "created_at": album.created_at
+                "created_at": album.created_at,
             } if album else None,
             "photo": photo_data,
-            "photos": [photo_data],
-            "passwordRequired": share.password_hash is not None,
+            "photos": [photo_data] if photo_data else [],
+            "passwordRequired": is_password,
             "expirationType": "unlimited",
-            "expiresAt": None
+            "expiresAt": None,
         }
-    
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid share configuration"
-        )
+
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Invalid share configuration")
+
+
+@router.get("/share/{token}")
+def get_shared_content(token: str, db: Session = Depends(get_db)):
+    """
+    Метаданные share-ссылки. Для публичной ссылки сразу возвращается контент и
+    mediaToken; для запароленной — только флаг passwordRequired (контент скрыт).
+    Пароль передаётся отдельным POST-запросом, чтобы не утекал в URL/логах.
+    """
+    share = _resolve_share(db, token)
+    with_content = share.password_hash is None
+    return _build_share_payload(db, share, with_content)
+
+
+@router.post("/share/{token}/access")
+def access_shared_content(
+    token: str,
+    body: ShareAccessRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Разблокировать контент share-ссылки. Пароль передаётся в теле JSON,
+    а не в query. При успехе возвращает полный контент и короткоживущий
+    mediaToken для бинарного доступа (просмотр/скачивание фото).
+    """
+    share = _resolve_share(db, token)
+    _verify_share_password(share, body.password)
+    return _build_share_payload(db, share, with_content=True)
 
 @router.get("/share/{token}/download/photo/{photo_id}")
 def download_shared_photo(
     token: str,
     photo_id: int,
-    password: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    access: Optional[str] = Query(None, description="Share media access token"),
+    db: Session = Depends(get_db),
 ):
-    share = db.query(Share).filter(Share.token == token).first()
+    share = _resolve_share(db, token)
 
-    if not share:
+    # Доступ к бинарнику авторизуется подписанным media-token, полученным после
+    # ввода пароля (POST /api/share/{token}/access). Пароль больше не летит в URL.
+    if not _share_media_token_ok(share, access):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Share link not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid access token required",
+            headers={"WWW-Authenticate": 'Bearer realm="share"'},
         )
-
-    # Check password if required
-    if share.password_hash:
-        if not password or not verify_password(password, share.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect password"
-            )
 
     # Verify photo belongs to shared content
     if share.album_id:
@@ -295,43 +342,37 @@ def download_shared_photo(
         msg = str(e)
         if any(s in msg for s in ("404", "File not found", "fileId")):
             try:
-                print(f"[self-heal] shared photo {photo.id} file gone, removing DB row")
+                logger.info("[self-heal] shared photo %s file gone, removing DB row", photo.id)
                 db.query(Share).filter(Share.photo_id == photo.id).delete(synchronize_session=False)
                 db.delete(photo)
                 db.commit()
             except Exception as purge_err:
-                print(f"[self-heal] failed to purge shared photo {photo.id}: {purge_err}")
+                logger.error("[self-heal] failed to purge shared photo %s: %s", photo.id, purge_err)
                 db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
                 detail="Photo no longer exists in storage"
             )
+        logger.exception("Failed to download shared photo %s", photo_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to download photo: {str(e)}"
+            detail="Failed to download photo"
         )
 
 @router.get("/share/{token}/download/album")
 def download_shared_album(
     token: str,
-    password: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
+    access: Optional[str] = Query(None, description="Share media access token"),
+    db: Session = Depends(get_db),
 ):
-    share = db.query(Share).filter(Share.token == token).first()
+    share = _resolve_share(db, token)
 
-    if not share:
+    if not _share_media_token_ok(share, access):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Share link not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid access token required",
+            headers={"WWW-Authenticate": 'Bearer realm="share"'},
         )
-
-    # Check password if required
-    if share.password_hash:
-        if not password or not verify_password(password, share.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect password"
-            )
 
     # Only album shares can be downloaded as zip
     if not share.album_id:
@@ -372,8 +413,9 @@ def download_shared_album(
             "Content-Disposition": build_content_disposition(f"{album_name}.zip")
         }
         return StreamingResponse(zip_buffer, media_type="application/zip", headers=headers)
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to download shared album %s", share.album_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to download album: {str(e)}"
+            detail="Failed to download album"
         )

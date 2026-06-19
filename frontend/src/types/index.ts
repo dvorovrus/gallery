@@ -23,6 +23,7 @@ export interface Photo {
 export interface User {
   id: number;
   email: string;
+  role: 'admin' | 'user';
   created_at: string;
 }
 

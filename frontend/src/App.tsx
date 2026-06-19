@@ -13,7 +13,7 @@ import SetupGuide from './components/SetupGuide';
 import GeoLanguage from './components/GeoLanguage';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import * as api from './services/api';
-import { shareAPI } from './api/client';
+import type { ShareData } from './services/api';
 import type { Album, Photo } from './types';
 import { calculateTimeRemaining, formatTimeRemaining, formatExpirationDate, getExpirationColor, getExpirationBgColor } from './utils/time';
 import { getLocaleForLanguage } from './i18n';
@@ -23,17 +23,23 @@ const INITIAL_VISIBLE_PHOTOS = 18;
 const PHOTO_PRELOAD_COUNT = 8;
 const PHOTO_PRIORITY_COUNT = 4;
 const PHOTO_BATCH_SIZE = 18;
-const getPhotoFullUrl = (photoId: number) => `/photos/${photoId}`;
-const getPhotoThumbnailUrl = (photoId: number) => `/photos/${photoId}?thumbnail=true&width=400`;
+const getPhotoFullUrl = (photoId: number) => `/api/photos/${photoId}`;
+const getPhotoThumbnailUrl = (photoId: number) => `/api/photos/${photoId}?thumbnail=true&width=400`;
+const buildPhotoFullUrl = (photoId: number, token: string) =>
+  token ? `/api/photos/${photoId}?token=${encodeURIComponent(token)}` : getPhotoFullUrl(photoId);
+const buildPhotoThumbnailUrl = (photoId: number, token: string) => {
+  const base = getPhotoThumbnailUrl(photoId);
+  return token ? `${base}&token=${encodeURIComponent(token)}` : base;
+};
 const sortPhotosByDateDesc = <T extends { created_at: string }>(items: T[]) =>
   [...items].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 const formatAppDate = (value: string, language?: string) => new Intl.DateTimeFormat(getLocaleForLanguage(language)).format(new Date(value));
 
-const downloadSharedPhoto = async (token: string, photoId: number, filename: string, password?: string) => {
+const downloadSharedPhoto = async (token: string, photoId: number, filename: string, accessToken?: string) => {
   try {
-    const url = new URL(`/share/${token}/download/photo/${photoId}`, window.location.origin);
-    if (password) {
-      url.searchParams.set('password', password);
+    const url = new URL(`/api/share/${token}/download/photo/${photoId}`, window.location.origin);
+    if (accessToken) {
+      url.searchParams.set('access', accessToken);
     }
     const response = await fetch(url.toString());
     if (!response.ok) throw new Error('Download failed');
@@ -51,11 +57,11 @@ const downloadSharedPhoto = async (token: string, photoId: number, filename: str
   }
 };
 
-const downloadSharedAlbum = async (token: string, albumName: string, password?: string) => {
+const downloadSharedAlbum = async (token: string, albumName: string, accessToken?: string) => {
   try {
-    const url = new URL(`/share/${token}/download/album`, window.location.origin);
-    if (password) {
-      url.searchParams.set('password', password);
+    const url = new URL(`/api/share/${token}/download/album`, window.location.origin);
+    if (accessToken) {
+      url.searchParams.set('access', accessToken);
     }
     const response = await fetch(url.toString());
     if (!response.ok) throw new Error('Download failed');
@@ -89,8 +95,6 @@ interface ShareTarget {
   photo: DownloadablePhoto | null;
   photos: any[];
 }
-
-type ShareData = any;
 
 interface SelectedFile {
   file: File;
@@ -430,19 +434,20 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
     setErrorMessage('');
 
     try {
-      let response;
-      
+      let response: { token: string };
       // Call backend API to create share link
       if (type === 'album' && shareTarget.album) {
-        response = await shareAPI.createAlbumShare(
+        const result = await api.createAlbumShare(
           shareTarget.album.id.toString(),
           accessType === 'password' ? password.trim() : undefined
         );
+        response = { token: result.token };
       } else if (type === 'photo' && shareTarget.photo) {
-        response = await shareAPI.createPhotoShare(
+        const result = await api.createPhotoShare(
           shareTarget.photo.id.toString(),
           accessType === 'password' ? password.trim() : undefined
         );
+        response = { token: result.token };
       } else {
         setErrorMessage(t('modals.shareInvalidError'));
         setIsGenerating(false);
@@ -450,7 +455,7 @@ const ShareModal = ({ isOpen, onClose, type, shareTarget }: ShareModalProps) => 
       }
 
       const origin = typeof window !== 'undefined' && window.location.origin !== 'null' ? window.location.origin : 'https://gallery.app';
-      setGeneratedLink(`${origin}/share/${type}/${response.data.token}`);
+      setGeneratedLink(`${origin}/share/${type}/${response.token}`);
       setIsCopied(false);
     } catch (error: any) {
       setErrorMessage(error.response?.data?.detail || t('modals.shareCreateError'));
@@ -543,8 +548,8 @@ const SharedContentView = ({
   onBack,
 }: SharedContentViewProps) => {
   const { t, i18n } = useTranslation();
-  const sharedPhotos = shareData.type === 'album' ? shareData.photos : shareData.photo ? [shareData.photo] : [];
-  const isLocked = shareData.passwordRequired && (!shareData.photos || shareData.photos.length === 0);
+  const sharedPhotos = shareData.type === 'album' ? (shareData.photos || []) : shareData.photo ? [shareData.photo] : [];
+  const isLocked = !!shareData.passwordRequired && (!shareData.photos || shareData.photos.length === 0);
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? 'dark' : ''}`}>
@@ -561,7 +566,7 @@ const SharedContentView = ({
             <div className="flex items-center gap-3">
               {!isLocked && shareData.type === 'album' && (
                 <button 
-                  onClick={() => downloadSharedAlbum(shareData.token, shareData.title, shareData.password || undefined)}
+                  onClick={() => downloadSharedAlbum(shareData.token, shareData.title || t('app.album'), shareData.mediaToken || undefined)}
                   className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm"
                   title={t('gallery.downloadAlbum')}
                 >
@@ -587,7 +592,7 @@ const SharedContentView = ({
               <AlbumExpirationBadge 
                 album={{
                   id: 0,
-                  title: shareData.title,
+                  title: shareData.title || '',
                   user_id: 0,
                   created_at: new Date().toISOString(),
                   is_public: true,
@@ -654,7 +659,7 @@ const SharedContentView = ({
                         shareData.token,
                         shareData.photo!.id,
                         shareData.photo!.caption || 'photo.jpg',
-                        shareData.password || undefined
+                        shareData.mediaToken || undefined
                       )}
                       className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-900 rounded-full font-medium transition-all shadow-sm flex-shrink-0"
                       title={t('app.download')}
@@ -693,7 +698,7 @@ const SharedContentView = ({
                               shareData.token,
                               photo.id,
                               photo.caption || 'photo.jpg',
-                              shareData.password || undefined
+                              shareData.mediaToken || undefined
                             );
                           }} 
                           className="p-2.5 bg-white/20 hover:bg-white/40 backdrop-blur-md text-white rounded-full transition-colors" 
@@ -989,6 +994,7 @@ export default function App() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedAlbumId, setSelectedAlbumId] = useState<number | null>(null);
+  const [albumMediaToken, setAlbumMediaToken] = useState<string>('');
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [loadedPhotoIds, setLoadedPhotoIds] = useState<Set<number>>(new Set());
   const [visiblePhotoCount, setVisiblePhotoCount] = useState(INITIAL_VISIBLE_PHOTOS);
@@ -1055,26 +1061,30 @@ export default function App() {
     localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // Load albums on mount + отложенная сверка с Google Drive
+  // Load albums on mount + отложенная сверка с Google Drive (только для админов)
   useEffect(() => {
     if (!isAuthenticated) return;
     loadAlbums();
 
-    // Сверка состояния Drive -> БД (не чаще раза в 5 минут)
-    const SYNC_THROTTLE_MS = 5 * 60 * 1000;
-    const lastSync = Number(localStorage.getItem('last_drive_sync_ts') || 0);
-    if (Date.now() - lastSync > SYNC_THROTTLE_MS) {
-      api.syncNow()
-        .then((res) => {
-          localStorage.setItem('last_drive_sync_ts', String(Date.now()));
-          if (res && (res.removed_photos || res.removed_albums)) {
-            // Состояние изменилось — перезагружаем списки
-            loadAlbums();
-            if (selectedAlbumId) loadPhotos(selectedAlbumId);
-          }
-        })
-        .catch((err) => console.error('Drive sync failed:', err));
-    }
+    // /sync делает глобальную мутацию БД и доступен только админам,
+    // поэтому сначала определяем роль, и только для админа запускаем сверку.
+    api.getCurrentUser()
+      .then(async (user) => {
+        if (user.role !== 'admin') return null;
+        const SYNC_THROTTLE_MS = 5 * 60 * 1000;
+        const lastSync = Number(localStorage.getItem('last_drive_sync_ts') || 0);
+        if (Date.now() - lastSync <= SYNC_THROTTLE_MS) return null;
+        return api.syncNow();
+      })
+      .then((res) => {
+        if (!res) return;
+        localStorage.setItem('last_drive_sync_ts', String(Date.now()));
+        if (res.removed_photos || res.removed_albums) {
+          loadAlbums();
+          if (selectedAlbumId) loadPhotos(selectedAlbumId);
+        }
+      })
+      .catch((err) => console.error('Init user/sync failed:', err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
@@ -1164,29 +1174,18 @@ export default function App() {
       }
 
       try {
-        // Fetch share data from server
-        const response = await shareAPI.getSharedAlbum(token);
-        setActiveShare(response.data as any);
+        // Fetch share metadata from server.
+        // GET /api/share/{token}: для публичной ссылки — контент + mediaToken;
+        // для запароленной — только флаг passwordRequired (контент скрыт).
+        const data = await api.getShareMeta(token);
+        setActiveShare(data as ShareData);
         setSharePasswordInput('');
         setSharePasswordError('');
         setIsUnlockingShare(false);
         setSharedLightboxPhotoIndex(null);
-      } catch (error: any) {
-        if (error.response?.status === 401) {
-          // Password required - show password prompt
-          setActiveShare({
-            token,
-            type,
-            passwordRequired: true,
-            accessType: 'password',
-            title: type === 'album' ? t('app.album') : t('app.photo'),
-            photos: [],
-            photo: null
-          } as any);
-        } else {
-          console.error('Failed to load shared content:', error);
-          setActiveShare(null);
-        }
+      } catch (error) {
+        console.error('Failed to load shared content:', error);
+        setActiveShare(null);
       }
     };
 
@@ -1217,8 +1216,17 @@ export default function App() {
     setLoadedPhotoIds(new Set()); // Сбрасываем загруженные фото
     setVisiblePhotoCount(INITIAL_VISIBLE_PHOTOS);
     try {
-      const photosData = await api.getPhotos(albumId);
-      setPhotos(photosData);
+      const [photosData, mediaToken] = await Promise.all([
+        api.getPhotos(albumId),
+        api.getMediaToken(albumId).catch(() => ''),
+      ]);
+      setAlbumMediaToken(mediaToken);
+      const enriched = photosData.map((p) => ({
+        ...p,
+        fullUrl: buildPhotoFullUrl(p.id, mediaToken),
+        thumbnailUrl: buildPhotoThumbnailUrl(p.id, mediaToken),
+      }));
+      setPhotos(enriched);
       setLoadingPhotos(false);
       // Фото будут загружаться через <img> с событием onLoad
     } catch (error) {
@@ -1246,6 +1254,7 @@ export default function App() {
     setAlbums([]);
     setPhotos([]);
     setSelectedAlbumId(null);
+    setAlbumMediaToken('');
     navigate('/login', { replace: true });
   };
 
@@ -1283,7 +1292,12 @@ export default function App() {
     if (!selectedAlbumId) return;
     try {
       const uploadedPhotos = await api.uploadPhotos(selectedAlbumId, files, caption);
-      setPhotos((prev) => sortPhotosByDateDesc([...uploadedPhotos, ...prev]));
+      const enriched = uploadedPhotos.map((p) => ({
+        ...p,
+        fullUrl: buildPhotoFullUrl(p.id, albumMediaToken),
+        thumbnailUrl: buildPhotoThumbnailUrl(p.id, albumMediaToken),
+      }));
+      setPhotos((prev) => sortPhotosByDateDesc([...enriched, ...prev]));
       setIsUploadPhotoModalOpen(false);
     } catch (error) {
       console.error('Failed to upload photos:', error);
@@ -1391,17 +1405,18 @@ export default function App() {
   const handleUnlockShare = async () => {
     if (!activeShare?.token) return;
     setIsUnlockingShare(true);
-    
+
     try {
-      const response = await shareAPI.getSharedAlbum(activeShare.token, sharePasswordInput.trim());
-      console.log('Unlock success, received data:', response.data);
-      // Сохраняем введённый пароль для последующего использования при скачивании
-      setActiveShare({ ...response.data, password: sharePasswordInput.trim() } as any);
+      // Разблокировка контента: пароль уходит в теле POST, а не в URL.
+      // В ответе приходит mediaToken — используется для скачивания фото/альбома.
+      const data = await api.unlockShare(activeShare.token, sharePasswordInput.trim());
+      setActiveShare(data as ShareData);
       setSharePasswordError('');
       setSharePasswordInput('');
     } catch (error: any) {
       console.error('Unlock failed:', error);
-      if (error.response?.status === 401) {
+      const message = error instanceof Error ? error.message : '';
+      if (/401|password|incorrect/i.test(message)) {
         setSharePasswordError(t('share.invalidPassword'));
       } else {
         setSharePasswordError(t('share.genericError'));
@@ -1452,7 +1467,7 @@ export default function App() {
                 activeShare.token,
                 currentSharedLightboxPhoto.id,
                 currentSharedLightboxPhoto.caption || 'photo.jpg',
-                activeShare.password || undefined
+                activeShare.mediaToken || undefined
               );
             }
           }}
